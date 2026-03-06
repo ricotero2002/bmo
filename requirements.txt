@@ -1,0 +1,8 @@
+langchain-chroma
+langchain-google-genai
+chromadb
+langchain-text-splitters
+fastapi 
+uvicorn 
+langchain_community
+Pydantic
