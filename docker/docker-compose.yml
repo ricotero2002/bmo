@@ -6,9 +6,24 @@ services:
     ports:
       - "8001:8000" # Mapeamos a 8001 para no chocar con Chroma si corre nativo
     env_file: ../.env.local
+    environment:
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
     depends_on:
-      chromadb:
-        condition: service_healthy
+      - chromadb
+      - db
+  db:
+    image: postgres:15
+    container_name: postgres-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-record_manager}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
   chromadb:
     image: chromadb/chroma:latest
     container_name: chromadb-server
@@ -20,12 +35,7 @@ services:
       - IS_PERSISTENT=TRUE
       - ANONYMIZED_TELEMETRY=FALSE
     restart: unless-stopped
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/v2/heartbeat" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
 
 volumes:
   chroma-data:
+  postgres-data:
