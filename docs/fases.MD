@@ -9,6 +9,9 @@ Pruebas (PyTest):
 Unit Tests: Mockea las llamadas a la API de LLM para probar la lógica de particionado (chunking) sin gastar tokens.
 Integration Tests: Verifica que un documento subido a FastAPI se guarde correctamente en ChromaDB.
 Logro: Un endpoint /ask que responda basado en PDFs locales.
+
+
+
 # Fase 2: Asincronía y Escalabilidad (Workers)
 Para evitar que la API se bloquee procesando archivos pesados, separamos el "cerebro" (API) del "músculo" (Workers).
 Componentes: RabbitMQ (Broker), Celery (Workers), Redis (Cache de resultados).

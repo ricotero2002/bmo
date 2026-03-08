@@ -1,0 +1,5 @@
+Este es un documento de prueba corto para evaluar el comportamiento del AgenticChunker.
+
+La idea es que se fragmente en base a las proposiciones generadas por el agente. El texto no debe ser tan largo como para disparar el ruteo de documentos estructurados o largos.
+
+No contiene encabezados markdown para asegurar que el ruteador lo mande al AgenticChunker.

@@ -1,0 +1,7 @@
+# Titulo Principal
+
+Este es un documento de prueba con encabezados markdown. Esto debería disparar la evaluación de estructurados en `ChunkingRouter` y mandarlo al `MarkdownTextSplitter`.
+
+## Titulo Secundario
+
+Al usar `## ` estamos confirmando que existe un encabezado y que el resultado booleano de `_is_structured_or_long` será verdadero, activando el tipo de chunking estructurado sin importar el largo del texto.

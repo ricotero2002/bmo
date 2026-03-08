@@ -1,12 +1,17 @@
+import chromadb
 from langchain_chroma import Chroma
 from src.providers.vector_store.db_provider import DbProvider
 class ChromaProvider(DbProvider):
-    def __init__(self, path, embeddings):
-        self.path = path
+    def __init__(self, host, port, embeddings,collection_name):
+        self.host = host
+        self.port = port
         self.embeddings = embeddings
+        self.collection_name=collection_name
+        
     def getVectorStore(self):
+        client = chromadb.HttpClient(host=self.host, port=self.port)
         return Chroma(
-            collection_name="example_collection",
+            collection_name=self.collection_name,
             embedding_function=self.embeddings,
-            persist_directory=self.path  # Usamos el path del constructor en su lugar
+            client=client
         )

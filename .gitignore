@@ -2,3 +2,5 @@
 .env*
 .env.*
 .env.local
+src/api/__pycache__/
+src/api/providers/vector_store/__pycache__/

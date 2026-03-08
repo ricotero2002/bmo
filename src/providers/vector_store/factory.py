@@ -20,8 +20,10 @@ class VectorStoreFactory:
                 embeddings=embeddings
             )
             
-        # Configuración por defecto para desarrollo local
+        # Configuración por defecto para desarrollo local (apuntando a ChromaDB en Docker)
         return ChromaProvider(
-            path="./data/chroma",
-            embeddings=embeddings
+            host=os.getenv("CHROMA_HOST", "localhost"),
+            port=int(os.getenv("CHROMA_PORT", 8000)),
+            embeddings=embeddings,
+            collection_name=os.getenv("COLLECTION_NAME", "example_collection")
         )

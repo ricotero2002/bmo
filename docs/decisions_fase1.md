@@ -21,15 +21,87 @@ Interfaz de Chat Fluida (Punto 4 de tu imagen): Para lograr una experiencia flui
 patron de factory para poder cambiar facilmente entre la version de pruebas/develpment local y la version en produccion usando la nube.
 
 
-Arreglar docker
+# Guardado de archivos
+## Arreglar problemas para gaurdar archivos
+Arreglar como se ven los /n
+## Pasar la logica de extraccion de pdfs fuera del endpointS
+Pasar la logica a un servis llamado ingestion.py para la extraccion de los pdfs, limpieza y cracion de los documentos.
+## Acomodar los metadatos, guardado de archivos y su organizacion
 
-ver bien como hacer lo de los tests con embedings segun realmente que quiero probar
-A. Tests Unitarios (Sin servidores - Mockeado)
-No requieren que Chroma o los LLM estén corriendo. Se usa para probar la lógica de chunking o el flujo de LangGraph.
 
-Comando: pytest tests/unit
+llevar un registro de los documentos/archivos guardados y poder ver como se guardaron, ver si necesito o no un bd aparte.
 
-Técnica: Mockeas la base de datos vectorial y el LLM.
+1. La opción "Pro": LangChain Indexing API
+LangChain ofrece una herramienta llamada RecordManager diseñada específicamente para sincronizar documentos con bases vectoriales.
+
+Cómo funciona: Calcula un hash único para cada fragmento de texto. Guarda estos hashes en una tabla SQL (SQLite o PostgreSQL).
+
+Manejo de versiones: Si subes el mismo archivo con cambios menores, el sistema detecta qué partes son nuevas, cuáles cambiaron y borra automáticamente los vectores viejos.
+
+Código conceptual:
+
+Python
+
+from langchain.indexes import SQLRecordManager, index
+
+record_manager = SQLRecordManager(
+    namespace=f"chroma/{collection_name}", 
+    db_url="sqlite:///record_manager_cache.sql" # Local
+    # db_url="postgresql://..." # Producción (RDS)
+)
+index(docs, record_manager, vectorstore, cleanup="incremental", source_id_key="source")
+
+What SQLRecordManager Actually Does
+Think of SQLRecordManager as the "memory" of your RAG system. It tracks which documents have been indexed and uses timestamps to determine what's changed. But it's much more sophisticated than a simple file tracker.
+
+Here's what happens under the hood:
+
+Record Tracking: Every time a document chunk gets indexed, the RecordManager creates a record with:
+
+The document's unique identifier
+A timestamp of when it was processed
+A hash of the content
+Metadata about the source
+Smart Updates: When you run incremental indexing, it automatically cleans up outdated document versions while minimizing the time both old and new versions exist in the system. This means:
+
+No duplicate embeddings cluttering your vector store
+Automatic removal of outdated content
+Efficient processing that only handles changed files
+Cleanup Modes: The system offers different cleanup strategies:
+
+Incremental: Continuously cleans up documents during indexing, removing outdated versions associated with source IDs that were processed
+Full: Complete cleanup after indexing, ensuring only the latest versions remain
+None: No automatic cleanup (useful for append-only scenarios)
+
+
+
+
+# diferentes chunkings
+
+Plantear el sistema para chequear diferentes formas de chunking, ver cual es mejor y si usar o no distinto segun el tipo. Y poder de forma deterministica su comparacion y como es mejor segun como se quiera luego hacer tambien la extraccion.
+
+Adaptive Chunking
+The system chooses chunking methods based on file state - semantic for new/changed files, text splitting for quick updates.
+
+
+docker compose exec api pytest src/tests/unit/test_chunking.py
+
+
+# Debugging Visual (Dashboard de Administración)
+Para ver "qué hay dentro" sin entrar a la consola de la base de datos:
+
+Streamlit (Panel de Debug): Puedes crear una página interna de administración con Streamlit para visualizar tus colecciones de Chroma en forma de tabla o DataFrame.
+(con que me devuelva los diferentes archivos y sus chunks internos me alcanza igual)
+
+Chroma Explorer / Chroma Flow Studio: Son herramientas externas que puedes conectar a tu contenedor de Docker para inspeccionar las colecciones, metadatos y embeddings de forma visual.
+
+# hacer el agente real
+poder preguntar realmente a un agente cosas en base a mis datos y que quizas tenga alguna otra tool
+La idea es hacer el agente con langgraph.
+
+
+# Hacer test de integracion:
+
 
 B. Tests de Integración (Con servidores reales)
 Aquí pruebas que la conexión con ChromaDB en Docker funciona realmente.

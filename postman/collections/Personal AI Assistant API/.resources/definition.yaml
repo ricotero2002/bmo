@@ -1,0 +1,7 @@
+$kind: collection
+name: Personal AI Assistant API
+description: Test collection for FastAPI RAG (Retrieval-Augmented Generation) API with ingest and query endpoints
+variables:
+  - key: baseUrl
+    value: ''
+    description: Base URL for the API (set by environment)
