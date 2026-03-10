@@ -1,17 +1,15 @@
 import os
 from typing import Optional, Type
 from pydantic import BaseModel
-from langchain.agents import create_agent
-from langchain.agents.middleware.model_fallback import ModelFallbackMiddleware
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
-from langchain.agents.structured_output import ProviderStrategy
+from langchain_core.language_models.chat_models import BaseChatModel
 
-class AgentFactory:
-    """Fábrica de agentes configurada con políticas nativas de Langchain (Retry y Fallback)."""
+class LLMFactory:
+    """Fábrica de modelos de lenguaje (LLMFactory) con políticas nativas de Langchain (Retry y Fallback)."""
     
     @classmethod
-    def create(cls, response_format: Optional[Type[BaseModel]] = None):
+    def create(cls, tools = None, response_format: Optional[Type[BaseModel]] = None) -> BaseChatModel:
         gemini_api_key = os.getenv("GOOGLE_API_KEY", "")
         openai_api_key = os.getenv("OPENAI_API_KEY", "")
 
@@ -51,28 +49,25 @@ class AgentFactory:
             temperature=0,
             openai_api_key=gemini_api_key
         )
+
+        # 3. Aplicar tools y structured output a TODOS los modelos (principal y fallbacks)
+        models = [primary_model, fallback_model, fallback_model2, fallback_model3]
         
+        if tools is not None:
+            models = [m.bind_tools(tools) for m in models]
 
-        # 2. Middleware de Fallback nativo
-        fallback = ModelFallbackMiddleware(
-            fallback_model,  # Try first on error
-            fallback_model2,
-            fallback_model3
-        )
-
-        # 3. Configuración de Salida Estructurada (Structured Output) ProviderStrategy
-        kwargs = {}
         if response_format:
-            kwargs["response_format"] = ProviderStrategy(response_format)
+            models = [m.with_structured_output(response_format) for m in models]
 
-        # 4. Creamos el LangGraph Agent y aplicamos Retry sobre todo el grafo
-        agent = create_agent(
-            model=primary_model,
-            tools=[],
-            middleware=[fallback],
-            **kwargs
+        primary_bound = models[0]
+        fallbacks_bound = models[1:]
+        
+        # 4. Configurar Fallbacks y Retries Nativos
+        model_with_fallbacks = primary_bound.with_fallbacks(
+            fallbacks_bound
         ).with_retry(
             stop_after_attempt=3,
             wait_exponential_jitter=True
         )
-        return agent
+            
+        return model_with_fallbacks

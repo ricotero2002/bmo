@@ -21,20 +21,19 @@ class Sentences(BaseModel):
 
 class AgenticChunker:
     """Implementa chunking proposicional utilizando el ecosistema nativo de LangGraph/Agents."""
-    def __init__(self, agent_factory):
-        self.plain_agent = agent_factory.create()
-        self.sentences_agent = agent_factory.create(response_format=Sentences)
-        self.chunk_id_agent = agent_factory.create(response_format=ChunkID)
+    def __init__(self, llm_factory):
+        self.plain_agent = llm_factory.create()
+        self.sentences_agent = llm_factory.create(response_format=Sentences)
+        self.chunk_id_agent = llm_factory.create(response_format=ChunkID)
         self.chunks = {}
         self.id_truncate_limit = 5
 
     def _get_propositions(self, text: str) -> List[str]:
         messages = PROPOSITIONS_PROMPT.format_messages(input=text)
         try:
-            result = self.sentences_agent.invoke({"messages": messages})
-            structured = result.get("structured_response")
-            if structured and structured.sentences:
-                return structured.sentences
+            result = self.sentences_agent.invoke(messages)
+            if result and result.sentences:
+                return result.sentences
         except Exception as e:
             logger.error(f"Error extrayendo proposiciones: {e}")
         return [text]
@@ -90,8 +89,8 @@ class AgenticChunker:
             proposition="\n".join(chunk['propositions']),
             current_summary=chunk['summary']
         )
-        res = self.plain_agent.invoke({"messages": messages})
-        return res["messages"][-1].content
+        res = self.plain_agent.invoke(messages)
+        return res.content
     
     def _update_chunk_title(self, chunk) -> str:
         messages = UPDATE_CHUNK_TITLE_PROMPT.format_messages(
@@ -99,18 +98,18 @@ class AgenticChunker:
             current_summary=chunk['summary'],
             current_title=chunk['title']
         )
-        res = self.plain_agent.invoke({"messages": messages})
-        return res["messages"][-1].content
+        res = self.plain_agent.invoke(messages)
+        return res.content
 
     def _get_new_chunk_summary(self, proposition) -> str:
         messages = NEW_CHUNK_SUMMARY_PROMPT.format_messages(proposition=proposition)
-        res = self.plain_agent.invoke({"messages": messages})
-        return res["messages"][-1].content
+        res = self.plain_agent.invoke(messages)
+        return res.content
     
     def _get_new_chunk_title(self, summary) -> str:
         messages = NEW_CHUNK_TITLE_PROMPT.format_messages(summary=summary)
-        res = self.plain_agent.invoke({"messages": messages})
-        return res["messages"][-1].content
+        res = self.plain_agent.invoke(messages)
+        return res.content
 
     def _create_new_chunk(self, proposition):
         new_chunk_id = str(uuid.uuid4())[:self.id_truncate_limit]
@@ -139,10 +138,9 @@ class AgenticChunker:
         )
 
         try:
-            result = self.chunk_id_agent.invoke({"messages": messages})
-            structured = result.get("structured_response")
-            if structured and structured.chunk_id:
-                chunk_found = structured.chunk_id
+            result = self.chunk_id_agent.invoke(messages)
+            if result and result.chunk_id:
+                chunk_found = result.chunk_id
                 if len(chunk_found) == self.id_truncate_limit and chunk_found in self.chunks:
                     return chunk_found
         except Exception as e:
@@ -157,25 +155,25 @@ class ChunkingRouter:
         if "# " in text or "## " in text: return True
         return False
 
-    def route_and_split(self, agent_factory, document_text: str, filename: str) -> List[Document]:
+    def route_and_split(self, llm_factory, document_text: str, filename: str) -> List[Document]:
         if self._is_structured_or_long(document_text, filename):
             logger.info(f"Ruteo: Usando MarkdownTextSplitter para {filename}")
             splitter = MarkdownTextSplitter(chunk_size=1000, chunk_overlap=200)
             return getattr(splitter, "create_documents")([document_text])
         else:
             logger.info(f"Ruteo: Usando AgenticChunker para {filename}")
-            agentic = AgenticChunker(agent_factory)
+            agentic = AgenticChunker(llm_factory)
             return agentic.chunk(document_text)
 
 class ChunkingService:
     def __init__(self):
         self.router = ChunkingRouter()
 
-    def process(self, original_document: Document, agent_factory) -> List[Document]:
+    def process(self, original_document: Document, llm_factory) -> List[Document]:
         text = original_document.page_content
         filename = original_document.metadata.get("source", "unknown")
         
-        chunks = self.router.route_and_split(agent_factory, text, filename)
+        chunks = self.router.route_and_split(llm_factory, text, filename)
         
         for chunk in chunks:
             base_meta = original_document.metadata.copy()

@@ -1,0 +1,37 @@
+name: Develop CI - Local Testing
+
+on:
+  push:
+    branches:
+      - develop
+  pull_request:
+    branches:
+      - develop
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    # Nota: Testcontainers levantará Docker por su cuenta en background
+    - name: Run Unit and Integration Tests
+      env:
+        # Variables fakes que necesitan los clientes para instanciarse (aunque el factory esté mockeado)
+        GOOGLE_API_KEY: "fake_google_key"
+        OPENAI_API_KEY: "fake_openai_key"
+        OPENWEATHERMAP_API_KEY: "fake_weather_key"
+      run: |
+        pytest src/tests/

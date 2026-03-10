@@ -1,6 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, Depends
-from src.schemas.fastapi import QueryRequest, QueryResponse
-from src.api.dependencies import get_vector_db, get_embeddings, get_record_manager, get_extraction_service, get_chunking_service, get_agent_factory
+from src.schemas.fastapi import QueryRequest, QueryResponse, AskRequest
+from src.api.dependencies import get_vector_db, get_embeddings, get_record_manager, get_extraction_service, get_chunking_service, get_llm_factory,get_agent_service
 from langchain_core.documents import Document
 
 #ver como exportar el router para main
@@ -13,7 +13,7 @@ async def ingest_document(
     extraction_service = Depends(get_extraction_service), 
     record_manager = Depends(get_record_manager),
     chunking_service = Depends(get_chunking_service),
-    agent_factory = Depends(get_agent_factory)
+    llm_factory = Depends(get_llm_factory)
 ):
     # 1. Obtener contenido
     content = await file.read()
@@ -23,7 +23,7 @@ async def ingest_document(
     document = extraction_service.create_document(text, file.filename)
 
     # 3. Chunking (Router Adaptativo)
-    chunks = chunking_service.process(document, agent_factory)
+    chunks = chunking_service.process(document, llm_factory)
     
     # 4. Guardar
     result = extraction_service.index_documents(chunks, record_manager, db)
@@ -51,3 +51,26 @@ async def query_rag(
     
     # 2. Generar respuesta con LLM
     return {"context": context}
+
+@router.post("/ask")
+async def ask_agent(
+    request: AskRequest,
+    agent_service = Depends(get_agent_service)
+):
+    try:
+        # Llamamos al agente inyectándole el thread_id para continuar la charla en la DB
+        result = await agent_service.chat(
+            message=request.message, 
+            thread_id=request.thread_id,
+            user_info=request.user_info,
+            prompt_version=request.prompt_version
+        )
+        # Extraer el contenido generado para no devolver el resúmen del sistema
+        generated_msg = result.get("generated")
+        last_message = generated_msg.content if generated_msg else result["messages"][-1].content
+        return {
+            "response": last_message,
+            "thread_id": request.thread_id
+        }
+    except Exception as e:
+        return {"error": str(e), "status_code": 500}

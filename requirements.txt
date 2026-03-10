@@ -17,3 +17,8 @@ psycopg2-binary
 pytest-asyncio
 langchain-openai
 langgraph
+langgraph-checkpoint-postgres
+psycopg[binary,pool]
+jinja2
+pyowm
+testcontainers[chroma,postgres]

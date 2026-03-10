@@ -3,4 +3,9 @@
 .env.*
 .env.local
 src/api/__pycache__/
-src/api/providers/vector_store/__pycache__/
+src/providers/vector_store/__pycache__/
+src/tests/unit/__pycache__/
+src/tests/integration/__pycache__/
+src/providers/record_manager/__pycache__/
+src/core/prompts/__pycache__/
+src/service/__pycache__/

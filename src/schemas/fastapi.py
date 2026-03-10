@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Any
+from typing import List, Any, Optional
 
 class QueryRequest(BaseModel):
     query: str
@@ -8,3 +8,9 @@ class QueryRequest(BaseModel):
 class QueryResponse(BaseModel):
     #answer: Any  # O el tipo de dato que decidas devolver
     context: List[str] = [] # (Opcional) los fragmentos de texto usados
+
+class AskRequest(BaseModel):
+    message: str
+    thread_id: str
+    user_info: Optional[dict] = {"name": "User"}
+    prompt_version: Optional[str] = "rag_v1"

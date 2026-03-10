@@ -97,7 +97,20 @@ Chroma Explorer / Chroma Flow Studio: Son herramientas externas que puedes conec
 
 # hacer el agente real
 poder preguntar realmente a un agente cosas en base a mis datos y que quizas tenga alguna otra tool
-La idea es hacer el agente con langgraph.
+La idea es hacer el agente con langgraph. Ver como es la mejor forma de pasarle al agente la posibllidad de acceder a los datos. Algo como un Adaptive Rag quizas o similar.
+
+Acomodar el agent, hacer que pueda devolver en forma de stream /ask, refactorizar agent de core para que en realidad sea llm_factory.
+
+Ahora falta agregarle prompts para que utilize su retriver siempre que pueda.
+
+
+Hacer guardrild viendo si los documentos tienen relevancia y que solo devuelva info chequeada.
+
+
+Agregar resumen de conversaciones si muy largas.
+
+agregar Transient Errors and Systemic Resilience.
+
 
 
 # Hacer test de integracion:

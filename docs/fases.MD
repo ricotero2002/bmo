@@ -26,6 +26,11 @@ Estrategia de Datos:
 Implementa Kafka para la ingesta de streams (ej. monitoreo de una carpeta de Drive o correos). Configura la semántica de "procesamiento exactamente una vez" (Exactly-Once Semantics) para evitar duplicados en tu base de datos si hay reintentos de red.
 Introduce Neo4j para crear un Grafo de Conocimiento. Extrae entidades y relaciones para resolver consultas que el RAG vectorial no puede (ej. "¿Cómo se relaciona el proyecto A con el cliente B?").
 Abstracción Local/Prod: Crea una clase StorageFactory que lea una variable de entorno USE_CLOUD_STORAGE. Si es False, usa contenedores locales; si es True, apunta a los endpoints de AWS (OpenSearch y Neo4j Aura).
+
+## registrr mejores metadatos
+Como guardar fechas o cosas asi, asi se peude buscar por metadatos.
+Ver como es la mejor forma de dividir la forma en la que se guardan los datos de todos los usuarios para que no se mesclen.
+
 # Fase 4: Orquestación Agéntica y Persistencia (LangGraph)
 Transformamos el flujo lineal en un agente capaz de decidir qué herramienta usar y recordar conversaciones pasadas.
 Componentes: LangGraph, DynamoDB (AWS).

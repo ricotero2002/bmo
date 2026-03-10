@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from unittest.mock import MagicMock
 
 from src.api.main import app
-from src.api.dependencies import get_embeddings, get_vector_db, get_extraction_service, get_record_manager, get_chunking_service, get_agent_factory
+from src.api.dependencies import get_embeddings, get_vector_db, get_extraction_service, get_record_manager, get_chunking_service, get_llm_factory
 from langchain_core.documents import Document
 
 client = TestClient(app)
@@ -83,7 +83,7 @@ def test_ingest_document(mock_embeddings, mock_vector_db, mock_extraction_servic
     app.dependency_overrides[get_extraction_service] = lambda: mock_extraction_service
     app.dependency_overrides[get_record_manager] = lambda: mock_record_manager
     app.dependency_overrides[get_chunking_service] = lambda: mock_chunking_service
-    app.dependency_overrides[get_agent_factory] = lambda: mock_agent_factory
+    app.dependency_overrides[get_llm_factory] = lambda: mock_agent_factory
     
     # Ejecutar Endpoint (notar el prefijo /api que definimos en main.py)
     response = client.post(
