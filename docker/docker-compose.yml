@@ -1,31 +1,9 @@
 services:
-  api:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-    ports:
-      - "8001:8000" # Mapeamos a 8001 para no chocar con Chroma si corre nativo
-    env_file: ../.env.local
-    environment:
-      - CHROMA_HOST=chromadb
-      - CHROMA_PORT=8000
-    depends_on:
-      - chromadb
-      - db
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-  db:
-    image: postgres:15
-    container_name: postgres-db
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
-      POSTGRES_DB: ${POSTGRES_DB:-record_manager}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    restart: unless-stopped
+  # ============================================
+  # Infraestructura Base
+  # ============================================
+
+  # Base de Datos Vectorial
   chromadb:
     image: chromadb/chroma:latest
     container_name: chromadb-server
@@ -38,6 +16,137 @@ services:
       - ANONYMIZED_TELEMETRY=FALSE
     restart: unless-stopped
 
+  # Base de Datos Relacional (Record Manager)
+  db:
+    image: postgres:15
+    container_name: postgres-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-record_manager}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-user} -d ${POSTGRES_DB:-record_manager}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis Stack (Cache y Backend de Celery)
+  redis:
+    image: redis/redis-stack:latest
+    container_name: personal_ai_redis
+    ports:
+      - "6379:6379"
+      - "8005:8001" # RedisInsight UI (mapeado a 8005 para evitar conflictos)
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # RabbitMQ (Broker de Celery)
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: personal_ai_rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672" # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "check_running" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ============================================
+  # Aplicaciones
+  # ============================================
+
+  # FastAPI API
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: api
+    container_name: personal_ai_api
+    depends_on:
+      db:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "8001:8000"
+    env_file: ../.env.local
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - RABBITMQ_URL=pyamqp://guest:guest@rabbitmq:5672//
+      - CELERY_BROKER_URL=pyamqp://guest:guest@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+    volumes:
+      - ..:/app
+    restart: unless-stopped
+
+  # Celery Worker
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: worker
+    depends_on:
+      api:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    env_file: ../.env.local
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - RABBITMQ_URL=pyamqp://guest:guest@rabbitmq:5672//
+      - CELERY_BROKER_URL=pyamqp://guest:guest@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+    volumes:
+      - ..:/app
+    restart: unless-stopped
+    deploy:
+      replicas: 2 # Múltiples workers para escalabilidad
+
+  # Flower (Monitoring)
+  flower:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: flower
+    container_name: personal_ai_flower
+    depends_on:
+      - worker
+      - rabbitmq
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=pyamqp://guest:guest@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    restart: unless-stopped
+
 volumes:
   chroma-data:
   postgres-data:
+  redis-data:

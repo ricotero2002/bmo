@@ -76,7 +76,11 @@ def mock_agent_factory():
     ("test_sheet.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", b"dummy excel bytes"),
     ("test_image.jpg", "image/jpeg", b"dummy image bytes"),
 ])
-def test_ingest_document(mock_embeddings, mock_vector_db, mock_extraction_service, mock_record_manager, mock_chunking_service, mock_agent_factory, filename, mime_type, content):
+def test_ingest_document(mocker, mock_embeddings, mock_vector_db, mock_extraction_service, mock_record_manager, mock_chunking_service, mock_agent_factory, filename, mime_type, content):
+    # Mock de la tarea de Celery
+    mock_task = mocker.patch("src.api.endpoints.process_document_task.apply_async")
+    mock_task.return_value.id = "fake-task-id"
+    
     # Aislar endpoints sobreescribiendo las dependencias
     app.dependency_overrides[get_embeddings] = lambda: mock_embeddings
     app.dependency_overrides[get_vector_db] = lambda: mock_vector_db
@@ -85,7 +89,7 @@ def test_ingest_document(mock_embeddings, mock_vector_db, mock_extraction_servic
     app.dependency_overrides[get_chunking_service] = lambda: mock_chunking_service
     app.dependency_overrides[get_llm_factory] = lambda: mock_agent_factory
     
-    # Ejecutar Endpoint (notar el prefijo /api que definimos en main.py)
+    # Ejecutar Endpoint
     response = client.post(
         "/api/ingest",
         files={"file": (filename, content, mime_type)}
@@ -93,13 +97,12 @@ def test_ingest_document(mock_embeddings, mock_vector_db, mock_extraction_servic
     
     # Validar resultados HTTP
     assert response.status_code == 200
-    assert response.json()["status"] == "success"
-    assert response.json()["index_result"]["num_added"] == 1
+    assert response.json()["status"] == "queued"
+    assert "task_id" in response.json()
+    assert response.json()["task_id"] == "fake-task-id"
     
-    # Validar lógica: que el extraction service se haya llamado para extraer y luego indexar
-    mock_extraction_service.extract_text_from_bytes.assert_called_once_with(content, filename)
-    mock_chunking_service.process.assert_called_once()
-    mock_extraction_service.index_documents.assert_called_once()
+    # Verificar que la tarea se llamó
+    assert mock_task.called
     
     # Limpiar override
     app.dependency_overrides = {}

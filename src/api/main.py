@@ -8,8 +8,8 @@ from src.api.endpoints import router as api_router
 from src.api.debug import router as debug_router
 from src.service.agent import AgentService
 from langchain_core.tools.retriever import create_retriever_tool
-
 from src.tools.registry import ToolRegistry
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
