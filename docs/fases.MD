@@ -20,13 +20,17 @@ Usa RabbitMQ para tareas críticas (como "procesar este documento") para garanti
 Usa Redis para guardar el estado de las tareas de Celery y como caché de inferencia para ahorrar costos de tokens en preguntas repetitivas.
 Pruebas: Testea que, si el worker de Celery falla, RabbitMQ mantenga el mensaje en la cola hasta que el worker se reinicie (durabilidad).
 
-# Fase 3: Ingesta de Datos Robusta y GraphRAG
+# Fase 3: Ingesta de Datos Robusta
 Aquí es donde el proyecto sube de nivel técnico al manejar flujos de datos complejos y relaciones.
 Componentes: Apache Kafka, Neo4j.
 Estrategia de Datos:
 Implementa Kafka para la ingesta de streams (ej. monitoreo de una carpeta de Drive o correos). Configura la semántica de "procesamiento exactamente una vez" (Exactly-Once Semantics) para evitar duplicados en tu base de datos si hay reintentos de red.
 Introduce Neo4j para crear un Grafo de Conocimiento. Extrae entidades y relaciones para resolver consultas que el RAG vectorial no puede (ej. "¿Cómo se relaciona el proyecto A con el cliente B?").
 Abstracción Local/Prod: Crea una clase StorageFactory que lea una variable de entorno USE_CLOUD_STORAGE. Si es False, usa contenedores locales; si es True, apunta a los endpoints de AWS (OpenSearch y Neo4j Aura).
+Neo para despues.
+
+##
+Tengo que acomodar o investigar como guardar bien para que los archivos solo sean accesibles para el usuarios que los sube
 
 ## registrr mejores metadatos
 Como guardar fechas o cosas asi, asi se peude buscar por metadatos.

@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     POSTGRES_USER: str = "user"
     POSTGRES_PASSWORD: str = "password"
     POSTGRES_DB: str = "record_manager"
+    DB_HOST: str = "localhost"
     DB_PORT: int = 5432
     
     # AI Services
@@ -49,6 +50,13 @@ class Settings(BaseSettings):
     
     # External APIs
     OPENWEATHERMAP_API_KEY: str = ""
+
+    # MinIO / Object Storage
+    MINIO_ENDPOINT: str = "localhost:9000"
+    MINIO_ACCESS_KEY: str = "admin"
+    MINIO_SECRET_KEY: str = "password"
+    MINIO_SECURE: bool = False
+    MINIO_BUCKET_NAME: str = "documents"
 
     # Kafka (Optional for later phases)
     KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"

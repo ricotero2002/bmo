@@ -44,12 +44,35 @@ celery_app.conf.update(
     task_queues=(
         Queue("default", Exchange("default"), routing_key="default"),
         Queue("ai_processing", Exchange("ai_processing"), routing_key="ai.#"),
+        # Nueva cola de ingesta con DLX (Dead Letter Exchange)
+        Queue(
+            "ingest_q",
+            Exchange("ingest_q", type="direct", durable=True),
+            routing_key="ingest_q",
+            durable=True,
+            queue_arguments={
+                "x-message-ttl": 86400000,  # 24h
+                "x-dead-letter-exchange": "ingest_dlx",
+                "x-dead-letter-routing-key": "ingest_dlq",
+            }
+        ),
+        # Cola para mensajes fallidos (Dead Letter Queue)
+        Queue(
+            "ingest_dlq",
+            Exchange("ingest_dlx", type="direct", durable=True),
+            routing_key="ingest_dlq",
+            durable=True,
+        ),
     ),
     
     # Routing
     task_routes={
-        "src.workers.tasks.process_document_task": {"queue": "ai_processing", "routing_key": "ai.doc"},
+        "src.workers.tasks.process_document_task": {"queue": "ingest_q"},
     },
+    
+    # Reliability
+    task_acks_late=True,
+    worker_reject_on_worker_lost=True,
     
     # Monitoring
     worker_send_task_events=True,

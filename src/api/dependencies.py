@@ -1,6 +1,9 @@
 from fastapi import Request
 from src.providers.vector_store.factory import VectorStoreFactory
 from src.service.ingestion import ExtractionService
+from src.providers.database.status_provider import StatusProvider
+from src.providers.storage.factory import StorageFactory
+
 def get_vector_db(request: Request):
     return request.app.state.vector_store
 
@@ -25,3 +28,9 @@ def get_checkpointer(request: Request):
 
 def get_agent_service(request: Request):
     return request.app.state.agent_service
+
+def get_status_provider(request: Request):
+    return request.app.state.status_provider
+
+def get_storage_provider(request: Request):
+    return request.app.state.storage_provider

@@ -4,7 +4,7 @@ import os
 from markitdown import MarkItDown
 from langchain_core.documents import Document
 from langchain_classic.indexes import index
-
+from typing import Optional
 
 class ExtractionService:
     def __init__(self):
@@ -30,11 +30,14 @@ class ExtractionService:
             return ""
         return text.strip()
 
-    def create_document(self, text: str, filename: str) -> Document:
+    def create_document(self, text: str, filename: str, user_id: Optional[str] = None) -> Document:
         """Envuelve el texto en el formato que espera LangChain."""
+        metadata = {"source": filename}
+        if user_id:
+            metadata["user_id"] = user_id
         return Document(
             page_content=text, 
-            metadata={"source": filename}
+            metadata=metadata
         )
     def index_documents(self, chunks, record_manager, vector_store):
         return index(
