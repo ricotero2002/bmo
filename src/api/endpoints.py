@@ -1,13 +1,13 @@
 from fastapi import APIRouter, UploadFile, File, Depends
 from src.schemas.fastapi import QueryRequest, QueryResponse, AskRequest
-from src.api.dependencies import get_vector_db, get_embeddings, get_record_manager, get_extraction_service, get_chunking_service, get_llm_factory,get_agent_service, get_status_provider, get_storage_provider
+from src.api.dependencies import *
 from langchain_core.documents import Document
 from src.workers.tasks import process_document_task
 from celery.result import AsyncResult
 from src.workers.celery_app import celery_app
 import uuid
 import io
-from typing import Optional
+from typing import Optional, List
 
 
 
@@ -22,70 +22,66 @@ async def health_check():
 async def ingest_document(
     file: UploadFile = File(...),
     user_id: Optional[str] = None,
-    status_provider = Depends(get_status_provider),
-    storage_provider = Depends(get_storage_provider)
+    orchestrator = Depends(get_orchestrator)
 ):
     """
     Endpoint robusto para la ingesta de documentos.
-    1. Crea registro en DB (status: received).
-    2. Sube archivo a Object Storage (MinIO).
-    3. Actualiza estado a 'queued'.
-    4. Delega procesamiento al worker vía Celery.
+    Delega la orquestación (DB, Storage, Celery) al IngestionOrchestrator.
     """
     doc_id = uuid.uuid4()
     
     try:
-        # 1. Crear registro inicial en Postgres
-        status_provider.create_job(
-            doc_id=doc_id,
-            user_id=user_id,
-            source_path=file.filename,
-            metadata={
-                "filename": file.filename, 
-                "content_type": file.content_type,
-                "user_id": user_id,
-                "uploaded_at": str(uuid.uuid1().time) # Example for date info if needed
-            }
-        )
-        
-        # 2. Subir a MinIO
-        # El nombre del objeto incluirá el user_id para aislamiento si se desea,
-        # pero el doc_id ya es único. Usaremos user_id como prefijo opcional.
-        object_name = f"{user_id}/{doc_id}" if user_id else str(doc_id)
-        
         content = await file.read()
-        file_stream = io.BytesIO(content)
-        storage_provider.upload_file(file_stream, object_name=object_name)
-        
-        # 3. Marcar como que ya está en cola
-        status_provider.update_status(doc_id, "queued")
-        
-        # 4. Delegar al worker
-        task = process_document_task.apply_async(
-            kwargs={
-                "doc_id": str(doc_id), 
-                "filename": file.filename,
-                "user_id": user_id,
-                "object_name": object_name
-            },
-            task_id=str(doc_id),
-            queue="ingest_q"
+        result = await orchestrator.orchestrate_ingestion(
+            doc_id=doc_id,
+            filename=file.filename,
+            content=content,
+            user_id=user_id,
+            metadata={"content_type": file.content_type}
         )
         
         return {
-            "status": "queued",
-            "doc_id": str(doc_id),
-            "filename": file.filename,
-            "task_id": task.id
+            **result,
+            "filename": file.filename
         }
         
     except Exception as e:
-        # Si algo falla antes de encolar, intentamos marcar como fallido si llegamos a crear el registro
-        try:
-            status_provider.update_status(doc_id, "failed", error_msg=str(e))
-        except:
-            pass
         return {"error": f"Failed to initiate ingestion: {str(e)}", "status_code": 500}
+
+@router.post("/ingest/batch")
+async def ingest_batch(
+    files: List[UploadFile] = File(...),
+    user_id: Optional[str] = None,
+    orchestrator = Depends(get_orchestrator)
+):
+    """
+    Endpoint para ingesta masiva (Batch).
+    Procesa múltiples archivos de forma secuencial delegando al orquestador.
+    """
+    results = []
+    errors = []
+    
+    for file in files:
+        doc_id = uuid.uuid4()
+        try:
+            content = await file.read()
+            # Orquestar individualmente cada archivo
+            res = await orchestrator.orchestrate_ingestion(
+                doc_id=doc_id,
+                filename=file.filename,
+                content=content,
+                user_id=user_id,
+                metadata={"content_type": file.content_type, "batch": True}
+            )
+            results.append({**res, "filename": file.filename})
+        except Exception as e:
+            errors.append({"filename": file.filename, "error": str(e)})
+            
+    return {
+        "status": "partial_success" if errors and results else ("success" if not errors else "failed"),
+        "processed": results,
+        "errors": errors
+    }
 
 @router.get("/ingestion-status/{doc_id}")
 async def get_ingestion_status(
@@ -160,5 +156,22 @@ async def ask_agent(
             "response": last_message,
             "thread_id": request.thread_id
         }
+    except Exception as e:
+        return {"error": str(e), "status_code": 500}
+
+@router.post("/dead-letter-queue-rabbit")
+def check_dlq_health():
+    """
+    Endpoint manual para verificar si hay mensajes acumulados en la cola de errores de RabbitMQ.
+    """
+    try:
+        with celery_app.connection() as conn:
+            queue = conn.SimpleQueue("ingest_dlq")
+            size = queue.qsize()
+            return {
+                "dlq_name": "ingest_dlq",
+                "message_count": size,
+                "status": "warning" if size > 10 else "ok"
+            }
     except Exception as e:
         return {"error": str(e), "status_code": 500}

@@ -1,6 +1,7 @@
 import io
 import re
 import os
+import logging
 from markitdown import MarkItDown
 from langchain_core.documents import Document
 from langchain_classic.indexes import index
@@ -20,7 +21,9 @@ class ExtractionService:
         stream = io.BytesIO(content)
         
         # MarkItDown soporta la mayoría de formatos si le damos el stream y la extensión
+        logging.info(f"Iniciando conversión con MarkItDown para {filename} ({ext})")
         result = self.md.convert_stream(stream, file_extension=ext)
+        logging.info(f"Conversión completada. Caracteres extraídos: {len(result.text_content)}")
         
         return self._clean_text(result.text_content)
 

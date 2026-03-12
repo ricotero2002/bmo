@@ -71,8 +71,12 @@ def process_document_task(self, doc_id: str, filename: str, user_id: Optional[st
         record_manager = RecordManagerFactory.get_manager()
         
         # 4. Extraer texto
+        logger.info(f"Extraer texto del archivo")
+        status_provider.update_status(job_uuid, "extracting")
         text = extraction_service.extract_text_from_bytes(content, filename)
         # Usamos el doc_id como clave primaria lógica en el record manager
+        logger.info(f"Creando documento")
+        status_provider.update_status(job_uuid, "documenting")
         document = extraction_service.create_document(text, filename)
         document.metadata.update({
             "source": doc_id,

@@ -22,6 +22,11 @@ class StatusProvider:
         
         session = self.Session()
         try:
+            # Idempotencia: Verificar si existe
+            existing = session.query(IngestionJob).filter(IngestionJob.doc_id == doc_id).first()
+            if existing:
+                return doc_id
+
             job = IngestionJob(
                 doc_id=doc_id,
                 user_id=user_id,

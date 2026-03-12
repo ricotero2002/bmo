@@ -25,11 +25,12 @@ celery_app.conf.update(
     # Optimización para tareas de IA pesadas
     worker_prefetch_multiplier=settings.worker_prefetch_multiplier,
     task_acks_late=True,
+    worker_reject_on_worker_lost=True,
     worker_max_tasks_per_child=settings.worker_max_tasks_per_child,
     
-    # Timeouts
-    task_soft_time_limit=300,
-    task_time_limit=600,
+    # Timeouts (aumentados para archivos pesados)
+    task_soft_time_limit=1800,
+    task_time_limit=3600,
     
     # Resultados
     result_expires=3600,
@@ -69,10 +70,6 @@ celery_app.conf.update(
     task_routes={
         "src.workers.tasks.process_document_task": {"queue": "ingest_q"},
     },
-    
-    # Reliability
-    task_acks_late=True,
-    worker_reject_on_worker_lost=True,
     
     # Monitoring
     worker_send_task_events=True,

@@ -22,7 +22,7 @@ Implementación de un sistema flexible para el manejo de archivos:
 Se implementó un sistema de monitoreo de vida del documento en PostgreSQL:
 - **Tabla `ingestion_jobs`**: Registra `doc_id`, `batch_id`, ruta del archivo, estado, intentos y mensajes de error.
 - **`StatusProvider`**: Clase encargada de gestionar los cambios de estado (`received` → `queued` → `processing` → `indexed`).
-- **Idempotencia**: Permite verificar si un documento ya fue procesado antes de duplicar chunks en la base vectorial.
+- **Idempotencia**: Se implementó una verificación de existencia en `create_job`. Si el `doc_id` ya existe, el sistema lo ignora en lugar de fallar, permitiendo reintentos seguros desde Kafka o Batch sin duplicar registros.
 
 ### 4. Lógica de Ingestión Robusta
 Se refactorizó el flujo completo para garantizar que no haya pérdida de datos:
@@ -59,8 +59,24 @@ Cada documento sigue un estado granular que permite monitorear exactamente dónd
 - `EMBEDDING`: Se están generando los vectores de los fragmentos.
 - `STORED`: Los vectores han sido guardados en la BD vectorial.
 - `INDEXED`: El proceso terminó exitosamente.
-- `FAILED`: Ocurrió un error (reintentable).
-- `DEAD`: Se agotaron los reintentos o el error es fatal (requiere revisión).
+
+### 8. Orquestación Centralizada (`IngestionOrchestrator`)
+Para evitar duplicidad entre el API y los consumidores de Kafka, se implementó un `IngestionOrchestrator`:
+- Centraliza la creación del Job en Postgres.
+- Gestiona la subida de archivos a MinIO si es necesario.
+- Encola la tarea en RabbitMQ de forma consistente.
+- Ubicación: `src/service/orchestrator.py`.
+
+### 9. Arquitectura de Streaming con Kafka (Fase 3 Final)
+Se integró Apache Kafka para soportar flujos continuos de datos:
+- **Broker en modo KRaft**: Versión moderna sin ZooKeeper.
+- **Tópico `raw-documents`**: Configurado con 6 particiones para escalabilidad horizontal y persistencia de 7 días.
+- **Kafka Consumer**: Un worker dedicado (`src/workers/kafka_consumer.py`) que escucha eventos de Kafka y usa el `IngestionOrchestrator` para iniciar el procesamiento.
+- **Dead Letter Topic (DLT)**: Tópico `raw-documents-dlt` para mensajes que fallan tras varios reintentos.
+- **Soporte de Archivos Pesados (99MB+)**: 
+    - Se aumentaron los límites de Kafka (`message.max.bytes`) y Celery (`task_time_limit`) a 100MB y 1 hora respectivamente.
+    - Soporte para **Claim Check Pattern** (referencia a MinIO) y **Direct Payload** (contenido en el mensaje de Kafka).
+- **Monitoreo**: Interfaz visual Kafka-UI disponible en el puerto `8080`.
 
 ### 8. Estrategia de Reintentos y Clasificación de Errores
 Se implementó una lógica inteligente para manejar fallos basándose en su naturaleza:

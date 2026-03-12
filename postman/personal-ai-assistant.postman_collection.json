@@ -1,0 +1,155 @@
+{
+	"info": {
+		"_postman_id": "8b5c1a2d-4f3e-4a1b-9c7d-e6b2a1c0d9f8",
+		"name": "Personal AI Assistant - Ingestion",
+		"description": "Endpoints para la ingesta de documentos y monitoreo de tareas.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Health Check",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "localhost:8001/api/health",
+					"host": [
+						"localhost"
+					],
+					"port": "8001",
+					"path": [
+						"api",
+						"health"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Single File Ingest",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "file",
+							"type": "file",
+							"src": []
+						},
+						{
+							"key": "user_id",
+							"value": "user_123",
+							"type": "text"
+						}
+					]
+				},
+				"url": {
+					"raw": "localhost:8001/api/ingest",
+					"host": [
+						"localhost"
+					],
+					"port": "8001",
+					"path": [
+						"api",
+						"ingest"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Batch File Ingest",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "files",
+							"type": "file",
+							"src": []
+						},
+						{
+							"key": "files",
+							"type": "file",
+							"src": []
+						},
+						{
+							"key": "user_id",
+							"value": "user_456",
+							"type": "text"
+						}
+					]
+				},
+				"url": {
+					"raw": "localhost:8001/api/ingest/batch",
+					"host": [
+						"localhost"
+					],
+					"port": "8001",
+					"path": [
+						"api",
+						"ingest",
+						"batch"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Ingestion Status",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "localhost:8001/api/ingestion-status/:doc_id",
+					"host": [
+						"localhost"
+					],
+					"port": "8001",
+					"path": [
+						"api",
+						"ingestion-status",
+						":doc_id"
+					],
+					"variable": [
+						{
+							"key": "doc_id",
+							"value": "PASTE_DOC_ID_HERE"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Task Result (Celery)",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "localhost:8001/api/task-status/:task_id",
+					"host": [
+						"localhost"
+					],
+					"port": "8001",
+					"path": [
+						"api",
+						"task-status",
+						":task_id"
+					],
+					"variable": [
+						{
+							"key": "task_id",
+							"value": "PASTE_TASK_ID_HERE"
+						}
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

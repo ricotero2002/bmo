@@ -34,3 +34,10 @@ def get_status_provider(request: Request):
 
 def get_storage_provider(request: Request):
     return request.app.state.storage_provider
+
+def get_orchestrator(request: Request):
+    from src.service.orchestrator import IngestionOrchestrator
+    return IngestionOrchestrator(
+        status_provider=request.app.state.status_provider,
+        storage_provider=request.app.state.storage_provider
+    )

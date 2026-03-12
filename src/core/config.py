@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     # App
     APP_ENV: str = "local"
     
+    # Ingestion Validation
+    ALLOWED_EXTENSIONS: list = [".pdf", ".docx", ".txt", ".md", ".json", ".csv"]
+    MAX_FILE_SIZE: int = 1000 * 1024 * 1024  # 1gb
+    
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
     
@@ -58,7 +62,9 @@ class Settings(BaseSettings):
     MINIO_SECURE: bool = False
     MINIO_BUCKET_NAME: str = "documents"
 
-    # Kafka (Optional for later phases)
+    # Kafka (Fase 3)
     KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
+    KAFKA_RAW_DOCUMENTS_TOPIC: str = "raw-documents"
+    KAFKA_DLT_TOPIC: str = "raw-documents-dlt"
 
 settings = Settings()
