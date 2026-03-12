@@ -4,25 +4,28 @@ Un asistente personal de IA basado en la arquitectura **Self-RAG** (Retrieval-Au
 
 ## 🚀 Estado Actual del Proyecto
 
-Actualmente hemos **finalizado la Fase 1**. El sistema es completamente funcional en un entorno local y dockerizado.
+Actualmente hemos **finalizado la Fase 2**. El sistema es completamente funcional, asíncrono y escalable.
 
 **Características implementadas:**
+- **Arquitectura Asíncrona:** Integración de **Celery + RabbitMQ** para la ingesta de documentos pesados sin bloquear la API.
 - **Pipeline de Ingesta Universal:** Usa `MarkItDown` para normalizar documentos complejos (PDF, DOCX) manteniendo su jerarquía semántica.
 - **Indexación Incremental:** Utiliza `SQLRecordManager` (PostgreSQL) para evitar procesamiento redundante de chunks idénticos.
 - **Enrutamiento y Chunking Adaptativo:** `ChunkingRouter` que decide entre un troceado jerárquico o un *Agentic Chunker* semántico según el documento.
-- **Agente Self-RAG con LangGraph:** Implementación de nodos que evalúan los documentos recuperados y previenen alucinaciones. Incluye validadores estructurados JSON, políticas de reintento (`RetryPolicy`) y *fallbacks* automáticos entre modelos (ej. Gemini a GPT-4o-mini).
-- **Memoria y Checkpoints:** Persistencia de hilos de conversación usando `PostgresSaver`. Nodos condicionales de compresión de historial (Summarization) para optimizar contexto.
-- **Testing y CI/CD:** Pruebas de integración automatizadas usando `Testcontainers` para levantar ChromaDB efímeros en flujos de GitHub Actions.
+- **Agente Self-RAG con LangGraph:** Implementación de nodos que evalúan los documentos recuperados y previenen alucinaciones.
+- **Escalabilidad:** Workers replicados con Docker Compose y monitoreo en tiempo real con **Flower**.
+- **Testing:** Cobertura de tests unitarios e integración ejecutados en el entorno dockerizado.
+
+> [!WARNING]
+> **Pendiente:** La parte del **Cache del LLM** (Inferencia) utilizando Redis no fue implementada en esta fase y queda como mejora próxima.
 
 ---
 
 ## 🗺️ Fases de Desarrollo
 
 *   ✅ **Fase 1: Cimientos y RAG Inteligente Local** (¡Completada!)
-    *   Setup de FastAPI, ChromaDB, Providers (Gemini/OpenAI) gestionados por Factories.
-    *   PostgreSQL para persistencia de LangGraph y RecordManager.
-*   ⏳ **Fase 2: Asincronía y Escalabilidad (Workers)** (Pendiente)
-    *   Integración de RabbitMQ, Celery y Redis para delegar la ingesta asíncrona pesada.
+*   ✅ **Fase 2: Asincronía y Escalabilidad (Workers)** (¡Completada!)
+    *   Integración de RabbitMQ, Celery y Redis para delegar la ingesta asíncrona pesada. Replicación de workers y monitoreo.
+*   ⏳ **Fase 3: Ingesta Robusta de Datos y GraphRAG** (En progreso...)
 *   ⏳ **Fase 3: Ingesta Robusta de Datos y GraphRAG** (Pendiente)
     *   Apache Kafka para flujos de datos complejos y Neo4j/OpenSearch para grafos de conocimiento.
 *   ⏳ **Fase 4: Orquestación y Memoria en la Nube** (Pendiente)

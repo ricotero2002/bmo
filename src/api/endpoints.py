@@ -2,6 +2,11 @@ from fastapi import APIRouter, UploadFile, File, Depends
 from src.schemas.fastapi import QueryRequest, QueryResponse, AskRequest
 from src.api.dependencies import get_vector_db, get_embeddings, get_record_manager, get_extraction_service, get_chunking_service, get_llm_factory,get_agent_service
 from langchain_core.documents import Document
+from src.workers.tasks import process_document_task
+from celery.result import AsyncResult
+from src.workers.celery_app import celery_app
+import uuid
+
 
 #ver como exportar el router para main
 router = APIRouter()
@@ -9,33 +14,36 @@ router = APIRouter()
 @router.post("/ingest")
 async def ingest_document(
     file: UploadFile = File(...),
-    db = Depends(get_vector_db),
-    extraction_service = Depends(get_extraction_service), 
-    record_manager = Depends(get_record_manager),
-    chunking_service = Depends(get_chunking_service),
-    llm_factory = Depends(get_llm_factory)
 ):
     # 1. Obtener contenido
     content = await file.read()
     
-    # 2. Procesar (Uso del servicio)
-    text = extraction_service.extract_text_from_bytes(content, file.filename)
-    document = extraction_service.create_document(text, file.filename)
-
-    # 3. Chunking (Router Adaptativo)
-    chunks = chunking_service.process(document, llm_factory)
+    # 2. Codificar a base64 para envío seguro vía Celery (JSON compatible)
+    import base64
+    content_b64 = base64.b64encode(content).decode('utf-8')
     
-    # 4. Guardar
-    result = extraction_service.index_documents(chunks, record_manager, db)
+    # 3. Delegar al worker
+    task_id = str(uuid.uuid4())
+    task = process_document_task.apply_async(
+        args=[content_b64, file.filename],
+        task_id=task_id
+    )
     
     return {
-        "status": "success", 
+        "status": "queued", 
         "filename": file.filename, 
-        "chunks_created": len(chunks),
-        "index_result": result
+        "task_id": task.id
     }
 
-
+@router.get("/task-status/{task_id}")
+async def get_task_status(task_id: str):
+    """Endpoint para monitorear el progreso de la ingesta."""
+    res = AsyncResult(task_id, app=celery_app)
+    return {
+        "task_id": task_id,
+        "status": res.status,
+        "result": res.result if res.ready() else None
+    }
 
 @router.post("/query", response_model=QueryResponse)
 async def query_rag(

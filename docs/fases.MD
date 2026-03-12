@@ -19,6 +19,7 @@ Desarrollo:
 Usa RabbitMQ para tareas críticas (como "procesar este documento") para garantizar que no se pierdan mensajes.
 Usa Redis para guardar el estado de las tareas de Celery y como caché de inferencia para ahorrar costos de tokens en preguntas repetitivas.
 Pruebas: Testea que, si el worker de Celery falla, RabbitMQ mantenga el mensaje en la cola hasta que el worker se reinicie (durabilidad).
+
 # Fase 3: Ingesta de Datos Robusta y GraphRAG
 Aquí es donde el proyecto sube de nivel técnico al manejar flujos de datos complejos y relaciones.
 Componentes: Apache Kafka, Neo4j.
