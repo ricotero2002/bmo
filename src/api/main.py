@@ -9,7 +9,8 @@ from src.api.debug import router as debug_router
 from src.service.agent import AgentService
 from langchain_core.tools.retriever import create_retriever_tool
 from src.tools.registry import ToolRegistry
-
+from src.providers.database.status_provider import StatusProvider
+from src.providers.storage.factory import StorageFactory
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -26,9 +27,14 @@ async def lifespan(app: FastAPI):
         # Definir el modelo y las tools a usar en el grafo a traves del Registry
         tools = ToolRegistry.get_agent_tools(app.state.vector_store.as_retriever())
         
-        # Compilamos el grafo UNA vez, pasándole el checkpointer de Postgres
-        app.state.agent_service = AgentService(app.state.llm_factory, tools, app.state.checkpointer)
-        yield
+    # Compilamos el grafo UNA vez, pasándole el checkpointer de Postgres
+    app.state.agent_service = AgentService(app.state.llm_factory, tools, app.state.checkpointer)
+    
+    # Ingestión providers (Status and Storage)
+    app.state.status_provider = StatusProvider()
+    app.state.storage_provider = StorageFactory.get_storage()
+    
+    yield
     # Shutdown: Limpieza de conexiones si fuera necesario
     # app.state.vector_store.close()
 

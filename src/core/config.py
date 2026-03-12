@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     # App
     APP_ENV: str = "local"
     
+    # Ingestion Validation
+    ALLOWED_EXTENSIONS: list = [".pdf", ".docx", ".txt", ".md", ".json", ".csv"]
+    MAX_FILE_SIZE: int = 1000 * 1024 * 1024  # 1gb
+    
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
     
@@ -36,6 +40,7 @@ class Settings(BaseSettings):
     POSTGRES_USER: str = "user"
     POSTGRES_PASSWORD: str = "password"
     POSTGRES_DB: str = "record_manager"
+    DB_HOST: str = "localhost"
     DB_PORT: int = 5432
     
     # AI Services
@@ -50,7 +55,16 @@ class Settings(BaseSettings):
     # External APIs
     OPENWEATHERMAP_API_KEY: str = ""
 
-    # Kafka (Optional for later phases)
+    # MinIO / Object Storage
+    MINIO_ENDPOINT: str = "localhost:9000"
+    MINIO_ACCESS_KEY: str = "admin"
+    MINIO_SECRET_KEY: str = "password"
+    MINIO_SECURE: bool = False
+    MINIO_BUCKET_NAME: str = "documents"
+
+    # Kafka (Fase 3)
     KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
+    KAFKA_RAW_DOCUMENTS_TOPIC: str = "raw-documents"
+    KAFKA_DLT_TOPIC: str = "raw-documents-dlt"
 
 settings = Settings()

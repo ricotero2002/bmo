@@ -4,16 +4,16 @@ Un asistente personal de IA basado en la arquitectura **Self-RAG** (Retrieval-Au
 
 ## 🚀 Estado Actual del Proyecto
 
-Actualmente hemos **finalizado la Fase 2**. El sistema es completamente funcional, asíncrono y escalable.
+Actualmente hemos **finalizado la Fase 3**. El sistema ahora soporta ingesta masiva por Kafka, almacenamiento persistente en MinIO y seguimiento de estado robusto.
 
-**Características implementadas:**
-- **Arquitectura Asíncrona:** Integración de **Celery + RabbitMQ** para la ingesta de documentos pesados sin bloquear la API.
-- **Pipeline de Ingesta Universal:** Usa `MarkItDown` para normalizar documentos complejos (PDF, DOCX) manteniendo su jerarquía semántica.
-- **Indexación Incremental:** Utiliza `SQLRecordManager` (PostgreSQL) para evitar procesamiento redundante de chunks idénticos.
-- **Enrutamiento y Chunking Adaptativo:** `ChunkingRouter` que decide entre un troceado jerárquico o un *Agentic Chunker* semántico según el documento.
-- **Agente Self-RAG con LangGraph:** Implementación de nodos que evalúan los documentos recuperados y previenen alucinaciones.
-- **Escalabilidad:** Workers replicados con Docker Compose y monitoreo en tiempo real con **Flower**.
-- **Testing:** Cobertura de tests unitarios e integración ejecutados en el entorno dockerizado.
+**Características implementadas (Fase 3):**
+- **Ingesta por Kafka:** Soporte para eventos de streaming (KRaft mode).
+- **Almacenamiento en MinIO:** Persistencia centralizada de archivos.
+- **Robustez:** Seguimiento granular en Postgres e idempotencia.
+- **Archivos Pesados:** Procesamiento optimizado para archivos de hasta 100MB directos.
+
+> [!NOTE]
+> Esta versión de la Fase 3 se completó sin Graph Database (Neo4j) y sin Batch Ingestion (funcionalidad simplificada), las cuales quedan para iteraciones futuras.
 
 > [!WARNING]
 > **Pendiente:** La parte del **Cache del LLM** (Inferencia) utilizando Redis no fue implementada en esta fase y queda como mejora próxima.
@@ -25,9 +25,10 @@ Actualmente hemos **finalizado la Fase 2**. El sistema es completamente funciona
 *   ✅ **Fase 1: Cimientos y RAG Inteligente Local** (¡Completada!)
 *   ✅ **Fase 2: Asincronía y Escalabilidad (Workers)** (¡Completada!)
     *   Integración de RabbitMQ, Celery y Redis para delegar la ingesta asíncrona pesada. Replicación de workers y monitoreo.
-*   ⏳ **Fase 3: Ingesta Robusta de Datos y GraphRAG** (En progreso...)
-*   ⏳ **Fase 3: Ingesta Robusta de Datos y GraphRAG** (Pendiente)
-    *   Apache Kafka para flujos de datos complejos y Neo4j/OpenSearch para grafos de conocimiento.
+*   ✅ **Fase 3: Ingesta Robusta de Datos (Kafka & MinIO)** (¡Completada!)
+    *   Kafka (KRaft), MinIO, Rastreo de estado en Postgres e Idempotencia.
+*   ⏳ **Fase 4: GraphRAG y Grafos de Conocimiento** (Pendiente)
+    *   Neo4j/OpenSearch para grafos de conocimiento y relaciones complejas.
 *   ⏳ **Fase 4: Orquestación y Memoria en la Nube** (Pendiente)
     *   Migración de checkpointers y storage hacia soluciones administradas como DynamoDB Aura.
 *   ⏳ **Fase 5: Despliegue Cloud-Native y Observabilidad** (Pendiente)

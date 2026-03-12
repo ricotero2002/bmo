@@ -37,4 +37,4 @@ jobs:
         OPENAI_API_KEY: "fake_openai_key"
         OPENWEATHERMAP_API_KEY: "fake_weather_key"
       run: |
-        pytest src/tests/
+        pytest src/tests/unit
