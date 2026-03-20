@@ -34,7 +34,6 @@ Abstracción Local/Prod: Crea una clase StorageFactory que lea una variable de e
 
 
 # Fase 4: Orquestación Agéntica y Persistencia (LangGraph)
-## registrr mejores metadatos
 Como guardar fechas o cosas asi, asi se peude buscar por metadatos.
 Ver como es la mejor forma de dividir la forma en la que se guardan los datos de todos los usuarios para que no se mesclen.
 
@@ -43,8 +42,19 @@ Componentes: LangGraph, DynamoDB (AWS).
 Desarrollo:
 Usa LangGraph para definir un ciclo Plan -> Route -> Act -> Verify. El agente decide si necesita buscar en vectores (Chroma/OpenSearch) o en el grafo (Neo4j).
 Persistencia: Implementa el checkpointer de LangGraph. En local puedes usar MemorySaver, pero para producción configura DynamoDBSaver. Esto permite que el agente "recuerde" hilos de conversación de forma persistente en AWS.
+
+Registrar mejor los metadatos, como guardar su fecha, y alguno otro que tenga sentido, (creacion, update) y ver si hay alguna forma que al subir un mismo archivo que se asocien a lo mismo (siendo que por como funciona el id no se puede)
+El agente esta bien asi o deberia definir un plan?
 Pruebas: Usa DeepEval para medir la "Corrección de Herramientas" (Tool Correctness). ¿El agente eligió Neo4j cuando la pregunta era sobre relaciones?.
+
+Cambiar para que devuelta el texto en formato stream
+Tengo que evaluar el modelo. (retriver relevance, fainthfull, Tool Correctness)
+Mejorar los test y agregar test de integracion los eae o algo asi 
+
 # Fase 5: Despliegue Cloud-Native y Observabilidad
+ver tema de pre-produccion antes de hacer todo el despliegue.
+
+
 Migración a la nube bajo un modelo de costos optimizado.
 Infraestructura: Kubernetes (EKS), Docker (Multi-stage builds).
 Monitoreo:

@@ -19,6 +19,9 @@ def test_document_creation():
     
     assert doc.metadata["source"] == "test.md"
     assert doc.page_content == "contenido de prueba"
+    # Verificar que created_at se genera y es un float (Unix timestamp, requerido por ChromaDB)
+    assert "created_at" in doc.metadata
+    assert isinstance(doc.metadata["created_at"], float)
 
 @patch('src.service.ingestion.MarkItDown')
 def test_extract_text_multiple_formats(mock_markitdown):

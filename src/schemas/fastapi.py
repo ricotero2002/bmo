@@ -13,6 +13,5 @@ class QueryResponse(BaseModel):
 class AskRequest(BaseModel):
     message: str
     thread_id: str
-    user_id: Optional[str] = None
-    user_info: Optional[dict] = {"name": "User"}
+    user_info: Optional[dict] = {"user_id": "User"}
     prompt_version: Optional[str] = "rag_v1"

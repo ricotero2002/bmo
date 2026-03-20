@@ -19,3 +19,4 @@ class IngestionJob(Base):
     metadata_json = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    file_hash = Column(String, nullable=True, index=True)  # ← NUEVO, con índice para búsqueda 

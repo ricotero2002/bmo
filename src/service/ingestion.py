@@ -2,6 +2,7 @@ import io
 import re
 import os
 import logging
+from datetime import datetime, timezone
 from markitdown import MarkItDown
 from langchain_core.documents import Document
 from langchain_classic.indexes import index
@@ -33,20 +34,31 @@ class ExtractionService:
             return ""
         return text.strip()
 
-    def create_document(self, text: str, filename: str, user_id: Optional[str] = None) -> Document:
+    def create_document(self, text: str, filename: str, 
+                    file_hash: str = None,        # ← NUEVO
+                    user_id: str = None,
+                    page_number: int = None,       # ← NUEVO
+                    chunk_index: int = None) -> Document:
         """Envuelve el texto en el formato que espera LangChain."""
-        metadata = {"source": filename}
+        metadata = {
+            "source": filename,
+            "file_hash": file_hash,
+            "created_at": datetime.now(timezone.utc).timestamp(),  # Unix timestamp (float) requerido por ChromaDB $gte
+            "page_number": page_number,
+            "chunk_index": chunk_index,
+        }
         if user_id:
             metadata["user_id"] = user_id
         return Document(
             page_content=text, 
             metadata=metadata
         )
+
     def index_documents(self, chunks, record_manager, vector_store):
         return index(
             docs_source=chunks,
             record_manager=record_manager,
             vector_store=vector_store,
-            cleanup="incremental", # Can also be "full" or None
-            source_id_key="source" # Or whatever key identifies unique documents
+            cleanup="incremental",
+            source_id_key="source",  # Agrupa todos los chunks del mismo archivo bajo el mismo 'source'
         )

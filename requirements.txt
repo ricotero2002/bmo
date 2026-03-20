@@ -20,6 +20,7 @@ pydantic-settings==2.13.1
 python-multipart==0.0.22
 python-dotenv==1.2.2
 SQLAlchemy==2.0.48
+alembic==1.15.2
 psycopg2-binary==2.9.10
 psycopg[binary,pool]
 celery[redis,pyamqp]==5.6.2
@@ -38,3 +39,6 @@ httpx
 testcontainers[chroma,postgres]==4.14.1
 minio
 confluent-kafka==2.13.2
+boto3 
+requests-aws4auth 
+opensearch-py

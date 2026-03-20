@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     worker_prefetch_multiplier: int = 1
     worker_max_tasks_per_child: int = 50
     
-    # Infrastructure
+    # Infrastructure — Local
     CHROMA_HOST: str = "localhost"
     CHROMA_PORT: int = 8000
     COLLECTION_NAME: str = "personal_assistant"
@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     # External APIs
     OPENWEATHERMAP_API_KEY: str = ""
 
-    # MinIO / Object Storage
+    # MinIO / Object Storage (local)
     MINIO_ENDPOINT: str = "localhost:9000"
     MINIO_ACCESS_KEY: str = "admin"
     MINIO_SECRET_KEY: str = "password"
@@ -66,5 +66,22 @@ class Settings(BaseSettings):
     KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
     KAFKA_RAW_DOCUMENTS_TOPIC: str = "raw-documents"
     KAFKA_DLT_TOPIC: str = "raw-documents-dlt"
+
+    # ── AWS (Fase 4 — Producción) ────────────────────────────────────────────
+    # Las credenciales AWS pueden configurarse aquí o via IAM Role en ECS (recomendado)
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+    AWS_REGION: str = "us-east-1"
+
+    # S3 — Reemplaza MinIO en producción
+    AWS_S3_BUCKET: str = "bmo-documents"
+
+    # OpenSearch — Reemplaza ChromaDB en producción
+    AWS_OPENSEARCH_URL: str = ""
+    AWS_OPENSEARCH_INDEX: str = "bmo-documents"
+
+    # DynamoDB — Caché (reemplaza Redis) y Checkpointer (alternativa a RDS)
+    AWS_DYNAMODB_TABLE_CACHE: str = "bmo-cache"
+    AWS_DYNAMODB_TABLE_CHECKPOINTER: str = "bmo-checkpoints"
 
 settings = Settings()

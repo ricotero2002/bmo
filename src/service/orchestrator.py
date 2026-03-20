@@ -1,5 +1,7 @@
 import uuid
 import io
+import hashlib
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from src.providers.database.status_provider import StatusProvider
 from src.providers.storage.factory import StorageFactory
@@ -7,6 +9,7 @@ from src.workers.tasks import process_document_task
 import logging
 import os
 from src.core.config import settings
+
 
 logger = logging.getLogger(__name__)
 
@@ -46,11 +49,20 @@ class IngestionOrchestrator:
         self.validate_file(filename, content)
         
         try:
+            # Calcular hash del contenido para deduplicación
+            file_hash = hashlib.sha256(content).hexdigest() if content else None
+
+            # Si el hash ya existe, el archivo no cambió → skip
+            if file_hash:
+                existing = self.status_provider.get_job_by_hash(file_hash, user_id)
+                if existing:
+                    return {"status": "already_exists", "doc_id": str(existing["doc_id"])}
+
             # 1. Crear registro inicial
             job_metadata = {
                 "filename": filename,
                 "user_id": user_id,
-                "uploaded_at": str(uuid.uuid1().time)
+                "uploaded_at": datetime.now(timezone.utc).isoformat(),
             }
             if metadata:
                 job_metadata.update(metadata)
@@ -59,6 +71,7 @@ class IngestionOrchestrator:
                 doc_id=doc_id,
                 user_id=user_id,
                 source_path=filename,
+                file_hash=file_hash,
                 metadata=job_metadata
             )
             

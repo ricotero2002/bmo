@@ -140,8 +140,6 @@ async def ask_agent(
         # Llamamos al agente inyectándole el thread_id para continuar la charla en la DB
         # El user_id se puede pasar en user_info o como campo directo para filtrado RAG interno
         user_context = request.user_info or {}
-        if request.user_id:
-            user_context["user_id"] = request.user_id
             
         result = await agent_service.chat(
             message=request.message, 
