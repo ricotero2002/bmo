@@ -59,12 +59,17 @@ class AgentService:
 
         user_info = state.get("user_info") or {"name": "Usuario"}
 
+        messages = list(state["messages"])
+        if messages and isinstance(messages[-1], ToolMessage):
+            messages.append(HumanMessage(content="Por favor extrae la respuesta del resultado de la herramienta y contesta mi pregunta. No devuelvas un mensaje vacío."))
+
         response = await chain.ainvoke({
             "user_name": user_info.get("name", "Usuario"),
             "today": date.today().isoformat(),  # "2026-03-19"
-            "messages": state["messages"]
+            "messages": messages
         })
 
+        # Para que el estado no acumule el mensaje temporal, solo devolvemos la respuesta de la AI
         return {"messages": [response], "generated": response}
 
     def _agent_router(self, state: GraphState) -> str:
@@ -381,3 +386,29 @@ class AgentService:
         }
 
         return await self.graph.ainvoke(input_message, config=config)
+
+    async def astream_chat(self, message: str, thread_id: str, user_info: dict, prompt_version: str):
+        """
+        Versión streaming del chat. Emite eventos detallados del grafo usando astream_events.
+        """
+        user_id = user_info.get("user_id") if user_info else None
+        config = {
+            "configurable": {
+                "thread_id": thread_id,
+                "user_id": user_id,
+            }
+        }
+
+        input_message = {
+            "messages": [("user", message)],
+            "user_info": user_info,
+            "prompt_version": prompt_version,
+            "retrieve_retry_count": 0,
+            "generate_retry_count": 0,
+            "docs_parse_retries": 0,
+            "hallucinations_parse_retries": 0
+        }
+
+        # version="v2" es el estándar actual recomendado por LangChain para eventos
+        async for event in self.graph.astream_events(input_message, config=config, version="v2"):
+            yield event

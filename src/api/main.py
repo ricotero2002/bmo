@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from src.providers.vector_store.factory import VectorStoreFactory
 from src.providers.record_manager.factory import RecordManagerFactory
 from src.core.llm import LLMFactory
@@ -41,6 +42,14 @@ async def lifespan(app: FastAPI):
         # Shutdown: al salir del with, el checkpointer cierra su pool correctamente
 
 app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Permite peticiones desde cualquier origen (ideal para desarrollo local)
+    allow_credentials=True,
+    allow_methods=["*"],  # Permite todos los métodos (POST, GET, y crucialmente OPTIONS)
+    allow_headers=["*"],  # Permite todos los headers (como Content-Type)
+)
 
 # Asociar enrutador a la app principal
 app.include_router(api_router, prefix="/api")
