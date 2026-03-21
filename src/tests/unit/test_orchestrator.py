@@ -6,7 +6,9 @@ from src.service.orchestrator import IngestionOrchestrator
 
 @pytest.fixture
 def mock_status_provider():
-    return MagicMock()
+    mock = MagicMock()
+    mock.get_job_by_hash.return_value = None
+    return mock
 
 
 @pytest.fixture
