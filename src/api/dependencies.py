@@ -41,3 +41,7 @@ def get_orchestrator(request: Request):
         status_provider=request.app.state.status_provider,
         storage_provider=request.app.state.storage_provider
     )
+
+def get_deleting():
+    from src.service.delete_file import DeleteOrchestrator
+    return DeleteOrchestrator()

@@ -34,7 +34,6 @@ Abstracción Local/Prod: Crea una clase StorageFactory que lea una variable de e
 
 
 # Fase 4: Orquestación Agéntica y Persistencia (LangGraph)
-## registrr mejores metadatos
 Como guardar fechas o cosas asi, asi se peude buscar por metadatos.
 Ver como es la mejor forma de dividir la forma en la que se guardan los datos de todos los usuarios para que no se mesclen.
 
@@ -43,8 +42,57 @@ Componentes: LangGraph, DynamoDB (AWS).
 Desarrollo:
 Usa LangGraph para definir un ciclo Plan -> Route -> Act -> Verify. El agente decide si necesita buscar en vectores (Chroma/OpenSearch) o en el grafo (Neo4j).
 Persistencia: Implementa el checkpointer de LangGraph. En local puedes usar MemorySaver, pero para producción configura DynamoDBSaver. Esto permite que el agente "recuerde" hilos de conversación de forma persistente en AWS.
+
+Registrar mejor los metadatos, como guardar su fecha, y alguno otro que tenga sentido, (creacion, update) y ver si hay alguna forma que al subir un mismo archivo que se asocien a lo mismo (siendo que por como funciona el id no se puede)
+El agente esta bien asi o deberia definir un plan?
 Pruebas: Usa DeepEval para medir la "Corrección de Herramientas" (Tool Correctness). ¿El agente eligió Neo4j cuando la pregunta era sobre relaciones?.
+
+
+Poder borrar archivos ( asi ahora todos tienen bien los metadatos y formatos)
+    Tengo que pensar en que los datos del archivo estan en varias partes.
+        Database ( jobEngestion, recordManager o index)
+        vector_store (creo que seria parte del index)
+        storage( el archivo como tal)
+        En redis como dura poco nose si hace falta
+
+Tengo que evaluar el modelo.
+
+
+Cambiar para que devuelta el texto en formato stream
+
+
+
+# Fase pre5: Frontend, usuarios y mejores tests
+Mejorar los test y agregar test de integracion los eae o algo asi 
+
+agregar usuarios para que al hacer el deployment poder controlar tasas de uso, sesiones y distintos usuarios
+
+1. El Framework Core: Next.js (con TypeScript)
+Es el rey indiscutido. Casi todas las startups de IA (incluyendo a OpenAI) construyen sus interfaces web sobre React, y Next.js es el estándar de la industria para llevar React a producción.
+
+Por qué impacta en tu CV: Demuestra que sabes manejar renderizado del lado del servidor (SSR), optimización de rutas y arquitecturas full-stack modernas. Además, se integra de forma nativa con despliegues en la nube (como Vercel o AWS).
+
+El "Senior Flex": Asegúrate de hacerlo estrictamente con TypeScript. Un frontend fuertemente tipado que consuma tu backend de FastAPI/Python es música para los oídos de cualquier Tech Lead.
+
+2. La capa de IA: Vercel AI SDK
+Si estás haciendo un asistente, no puedes hacer peticiones HTTP tradicionales donde el usuario espera 10 segundos a que el LLM termine de pensar. Tienes que usar Streaming (que las palabras aparezcan a medida que se generan, como en ChatGPT).
+
+Por qué usarlo: El Vercel AI SDK maneja todo el estado del chat, el streaming de texto (Server-Sent Events) y las llamadas a herramientas (Tool Calling) de forma casi mágica en React.
+
+El impacto: Mencionar en tu CV que tu frontend usa "Streaming UI" o "Server-Sent Events para baja latencia" te suma muchísimos puntos.
+
+3. UI y Estilos: Tailwind CSS + shadcn/ui
+Atrás quedaron los días de escribir CSS a mano o usar Bootstrap. Hoy, el 90% de las startups usan Tailwind CSS. Para los componentes (botones, modales, barras de chat), el estándar absoluto hoy es shadcn/ui.
+
+Por qué usarlo: shadcn/ui no es una librería que instalas, son componentes limpios que copias y pegas en tu código y puedes modificar a fondo. Da ese aspecto minimalista, profesional y oscuro (Dark Mode) típico de las herramientas de IA modernas (piensa en la interfaz de Cursor o Perplexity).
+
+4. Manejo de Estado y Datos: React Query (TanStack Query)
+Para manejar el historial de chats, los estados de carga y la caché del lado del cliente, React Query es lo más demandado. Te ahorrará dolores de cabeza sincronizando tu frontend con tu base de datos (PostgreSQL/Redis).
+
 # Fase 5: Despliegue Cloud-Native y Observabilidad
+ver tema de pre-produccion antes de hacer todo el despliegue.
+
+
 Migración a la nube bajo un modelo de costos optimizado.
 Infraestructura: Kubernetes (EKS), Docker (Multi-stage builds).
 Monitoreo:
@@ -60,6 +108,5 @@ Relevancia de Respuesta: Mide qué tan útil es la respuesta para el usuario fin
 CI/CD: Configura un pipeline en GitHub Actions que ejecute tus tests de DeepEval con cada commit. Si la métrica de fidelidad baja de 0.8, el despliegue a producción se detiene automáticamente.
 
 
-
-
 me falta hacer pruebas con postman
+

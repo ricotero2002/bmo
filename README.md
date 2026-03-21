@@ -4,16 +4,17 @@ Un asistente personal de IA basado en la arquitectura **Self-RAG** (Retrieval-Au
 
 ## 🚀 Estado Actual del Proyecto
 
-Actualmente hemos **finalizado la Fase 3**. El sistema ahora soporta ingesta masiva por Kafka, almacenamiento persistente en MinIO y seguimiento de estado robusto.
+Actualmente hemos **finalizado la Fase 4**. El sistema ahora soporta orquestación híbrida en la nube (AWS), persistencia mejorada, migraciones con Alembic, transaccionalidad distribuida y evaluación avanzada del comportamiento del agente.
 
-**Características implementadas (Fase 3):**
-- **Ingesta por Kafka:** Soporte para eventos de streaming (KRaft mode).
-- **Almacenamiento en MinIO:** Persistencia centralizada de archivos.
-- **Robustez:** Seguimiento granular en Postgres e idempotencia.
-- **Archivos Pesados:** Procesamiento optimizado para archivos de hasta 100MB directos.
+**Características implementadas (Fase 4):**
+- **Providers Cloud-Native (AWS):** Soporte para S3, OpenSearch, RDS PostgreSQL y DynamoDB.
+- **Seguridad y Control de Agente:** Inyección de contexto de usuario para multi-tenancy y control estricto de alucinaciones.
+- **Streaming de Respuestas:** Integración de Server-Sent Events (SSE) en la API.
+- **Calidad de Respuestas (LLMOps):** Evaluaciones de métricas con DeepEval (Faithfulness, Answer Relevancy) y Pytest.
+- **Consistencia de Datos:** Borrado lógico distribuido (Saga) y migraciones de DB vía Alembic.
 
 > [!NOTE]
-> Esta versión de la Fase 3 se completó sin Graph Database (Neo4j) y sin Batch Ingestion (funcionalidad simplificada), las cuales quedan para iteraciones futuras.
+> Esta versión sentó las bases sólidas del backend. La capa visual interactiva y los tests E2E serán abordados en la siguiente Fase pre-5.
 
 > [!WARNING]
 > **Pendiente:** La parte del **Cache del LLM** (Inferencia) utilizando Redis no fue implementada en esta fase y queda como mejora próxima.
@@ -27,14 +28,14 @@ Actualmente hemos **finalizado la Fase 3**. El sistema ahora soporta ingesta mas
     *   Integración de RabbitMQ, Celery y Redis para delegar la ingesta asíncrona pesada. Replicación de workers y monitoreo.
 *   ✅ **Fase 3: Ingesta Robusta de Datos (Kafka & MinIO)** (¡Completada!)
     *   Kafka (KRaft), MinIO, Rastreo de estado en Postgres e Idempotencia.
-*   ⏳ **Fase 4: GraphRAG y Grafos de Conocimiento** (Pendiente)
-    *   Neo4j/OpenSearch para grafos de conocimiento y relaciones complejas.
-*   ⏳ **Fase 4: Orquestación y Memoria en la Nube** (Pendiente)
-    *   Migración de checkpointers y storage hacia soluciones administradas como DynamoDB Aura.
+*   ✅ **Fase 4: Orquestación Agéntica, Persistencia y Evaluación Estricta** (¡Completada!)
+    *   Migración Cloud (AWS), API Streaming (SSE), metadatos, control riguroso de LLM y CI/CD con DeepEval/Pytest.
+*   ⏳ **Fase pre5: Frontend, Usuarios y Mejores Tests** (En Progreso)
+    *   Creación del frontend. Agregar gestión de usuarios para deployment (sesiones, control de tasas de uso) y tests E2E.
 *   ⏳ **Fase 5: Despliegue Cloud-Native y Observabilidad** (Pendiente)
     *   Alistamiento para AWS EKS (Kubernetes), OpenTelemetry y despliegue por componentes.
-*   ⏳ **Fase 6: Evaluación Continua** (Pendiente)
-    *   Test de calidad avanzados utilizando DeepEval.
+*   ⏳ **Fase 6: GraphRAG y Grafos de Conocimiento** (Pendiente)
+    *   Neo4j/OpenSearch para grafos de conocimiento y relaciones complejas.
 
 ---
 

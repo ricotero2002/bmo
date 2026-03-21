@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from src.providers.vector_store.factory import VectorStoreFactory
 from src.providers.record_manager.factory import RecordManagerFactory
 from src.core.llm import LLMFactory
@@ -20,25 +21,35 @@ async def lifespan(app: FastAPI):
     app.state.record_manager = RecordManagerFactory.get_manager()
     app.state.llm_factory = LLMFactory
     
-    # Manejador de contexto asíncrono para el checkpointer
+    # El checkpointer mantiene su context manager abierto durante toda la vida de la app
     async with CheckpointerFactory.get_checkpointer() as checkpointer:
         app.state.checkpointer = checkpointer
         
-        # Definir el modelo y las tools a usar en el grafo a traves del Registry
-        tools = ToolRegistry.get_agent_tools(app.state.vector_store.as_retriever())
+        # Registrar el vector store en el módulo de tools ANTES de compilar el grafo
+        ToolRegistry.set_vector_store(app.state.vector_store)
         
-    # Compilamos el grafo UNA vez, pasándole el checkpointer de Postgres
-    app.state.agent_service = AgentService(app.state.llm_factory, tools, app.state.checkpointer)
-    
-    # Ingestión providers (Status and Storage)
-    app.state.status_provider = StatusProvider()
-    app.state.storage_provider = StorageFactory.get_storage()
-    
-    yield
-    # Shutdown: Limpieza de conexiones si fuera necesario
-    # app.state.vector_store.close()
+        # Definir las tools a usar en el grafo a través del Registry
+        tools = ToolRegistry.get_agent_tools()
+        
+        # Compilamos el grafo UNA vez, pasándole el checkpointer de Postgres
+        app.state.agent_service = AgentService(app.state.llm_factory, tools, app.state.checkpointer)
+        
+        # Ingestión providers (Status and Storage)
+        app.state.status_provider = StatusProvider()
+        app.state.storage_provider = StorageFactory.get_storage()
+        
+        yield
+        # Shutdown: al salir del with, el checkpointer cierra su pool correctamente
 
 app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Permite peticiones desde cualquier origen (ideal para desarrollo local)
+    allow_credentials=True,
+    allow_methods=["*"],  # Permite todos los métodos (POST, GET, y crucialmente OPTIONS)
+    allow_headers=["*"],  # Permite todos los headers (como Content-Type)
+)
 
 # Asociar enrutador a la app principal
 app.include_router(api_router, prefix="/api")

@@ -3,6 +3,7 @@
 .env.*
 .env.local
 .venv
+.deepeval/*
 
 # Python cache — global (cubre todo el proyecto)
 **/__pycache__/

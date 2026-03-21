@@ -125,14 +125,14 @@ def process_document_task(self, doc_id: str, filename: str, user_id: Optional[st
         # Errores permanentes: No reintentar, marcar como 'dead' inmediatamente
         logger.error(f"Error permanente para {doc_id}: {exc}")
         status_provider.update_status(job_uuid, "dead", error_msg=f"PERMANENT_ERROR: {str(exc)}")
-        return {"status": "dead", "error": str(exc)}
+        raise exc
 
     except Exception as e:
         # Error genérico: Tratamos como permanente por seguridad si no es clasificado
         # O podrías decidir reintentar si prefieres ser agresivo
         logger.error(f"Error inesperado procesando {filename} (ID: {doc_id}): {e}")
         status_provider.update_status(job_uuid, "dead", error_msg=f"UNEXPECTED_ERROR: {str(e)}")
-        return {"status": "dead", "error": str(e)}
+        raise e
 
 @celery_app.task(name="src.workers.tasks.cleanup_expired_cache")
 def cleanup_expired_cache():
@@ -140,3 +140,76 @@ def cleanup_expired_cache():
     logger.info("Cleaning up expired cache...")
     # Implementation depends on how cache is structured in Redis
     pass
+
+@celery_app.task(
+    bind=True,
+    name="src.workers.tasks.delete_document_task",
+    acks_late=True,          # ACK only AFTER successful processing
+    reject_on_worker_lost=True,  # Re-queue if worker dies mid-task
+    max_retries=5,
+    default_retry_delay=60,
+)
+def delete_document_task(self, doc_id: str, user_id: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Tarea de Celery para eliminar documentos de forma asíncrona e idempotente.
+    1. Borra del Vector Store usando las keys del RecordManager.
+    2. Borra el archivo físico de Storage.
+    3. Marca como 'deleted' en la base de datos SQL.
+    """
+    status_provider = StatusProvider()
+    storage_provider = StorageFactory.get_storage()
+    job_uuid = uuid.UUID(doc_id)
+    
+    try:
+        status_provider.update_status(job_uuid, "deleting")
+
+        # 1. Vector Store & Record Manager
+        vector_db = VectorStoreFactory.get_provider().getVectorStore()
+        record_manager = RecordManagerFactory.get_manager()
+        
+        # Obtenemos las keys de los chunks asociados a este doc_id
+        keys = record_manager.list_keys(group_ids=[doc_id])
+        if keys:
+            logger.info(f"Borrando {len(keys)} chunks del Vector Store para el documento {doc_id}")
+            try:
+                vector_db.delete(ids=keys)
+            except Exception as e:
+                logger.warning(f"Error al borrar del Vector Store (puede que ya no existan): {e}")
+            
+            # Quitar referencias del RecordManager
+            record_manager.delete_keys(keys)
+        else:
+            logger.info(f"No se encontraron chunks en RecordManager para {doc_id}.")
+
+        # 2. Object Storage (MinIO/S3)
+        target_object = f"{user_id}/{doc_id}" if user_id else doc_id
+        logger.info(f"Borrando archivo {target_object} del Storage")
+        try:
+            storage_provider.delete_file(target_object)
+        except Exception as e:
+            logger.warning(f"Error al borrar del Storage (o ya fue borrado): {e}")
+
+        # 3. Base de Datos (Marcar como DELETED definitivo)
+        status_provider.update_status(job_uuid, "deleted")
+        
+        logger.info(f"Borrado exitoso distribuido para {doc_id}")
+        return {
+            "status": "deleted",
+            "doc_id": doc_id,
+        }
+
+    except TRANSIENT_EXCEPTIONS as exc:
+        delay = 60 * (2 ** self.request.retries)
+        logger.warning(f"Error transitorio borrando {doc_id}, reintentando ({self.request.retries + 1}/5) en {delay}s: {exc}")
+        status_provider.update_status(job_uuid, "delete_failed", error_msg=str(exc))
+        raise self.retry(exc=exc, countdown=delay)
+
+    except PERMANENT_EXCEPTIONS as exc:
+        logger.error(f"Error permanente borrando {doc_id}: {exc}")
+        status_provider.update_status(job_uuid, "dead", error_msg=f"PERMANENT_ERROR: {str(exc)}")
+        raise exc
+
+    except Exception as e:
+        logger.error(f"Error inesperado borrando {doc_id}: {e}")
+        status_provider.update_status(job_uuid, "dead", error_msg=f"UNEXPECTED_ERROR: {str(e)}")
+        raise e

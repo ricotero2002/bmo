@@ -1,14 +1,12 @@
 from fastapi import APIRouter, UploadFile, File, Depends
-from src.schemas.fastapi import QueryRequest, QueryResponse, AskRequest
+from src.schemas.fastapi import QueryRequest, QueryResponse, AskRequest, DeleteRequest
 from src.api.dependencies import *
-from langchain_core.documents import Document
-from src.workers.tasks import process_document_task
 from celery.result import AsyncResult
 from src.workers.celery_app import celery_app
 import uuid
-import io
 from typing import Optional, List
-
+from fastapi.responses import StreamingResponse
+import json
 
 
 #ver como exportar el router para main
@@ -98,6 +96,27 @@ async def get_ingestion_status(
     except ValueError:
         return {"error": "Invalid UUID format", "status_code": 400}
 
+@router.post("/delete_file")
+async def delete_document(
+    request: DeleteRequest,
+    status_provider = Depends(get_status_provider),
+    get_deleting = Depends(get_deleting)
+):
+    """Encola la eliminación de un documento en la DB, Vector Store y Storage."""
+    try:
+        document_uuid = uuid.UUID(request.doc_id)
+        job = status_provider.get_job(document_uuid)
+        if not job:
+            return {"error": "Job not found", "status_code": 404}
+
+        result = await get_deleting.delete_file(
+            doc_id=document_uuid,
+            user_id=request.user_id,
+        )
+        return result
+    except ValueError:
+        return {"error": "Invalid UUID format", "status_code": 400}
+
 @router.get("/task-status/{task_id}")
 async def get_task_status(task_id: str):
     """Endpoint para monitorear el progreso de la ingesta."""
@@ -140,8 +159,6 @@ async def ask_agent(
         # Llamamos al agente inyectándole el thread_id para continuar la charla en la DB
         # El user_id se puede pasar en user_info o como campo directo para filtrado RAG interno
         user_context = request.user_info or {}
-        if request.user_id:
-            user_context["user_id"] = request.user_id
             
         result = await agent_service.chat(
             message=request.message, 
@@ -158,6 +175,59 @@ async def ask_agent(
         }
     except Exception as e:
         return {"error": str(e), "status_code": 500}
+
+
+
+@router.post("/ask/stream")
+async def ask_agent_stream(
+    request: AskRequest,
+    agent_service = Depends(get_agent_service)
+):
+    """
+    Endpoint de streaming. Emite estados (status) y tokens (text) en tiempo real
+    usando Server-Sent Events (SSE).
+    """
+    async def event_generator():
+        try:
+            user_context = request.user_info or {}
+            
+            # Llamamos al nuevo método asíncrono que creamos en agent.py
+            async for event in agent_service.astream_chat(
+                message=request.message, 
+                thread_id=request.thread_id,
+                user_info=user_context,
+                prompt_version=request.prompt_version
+            ):
+                kind = event["event"]
+                
+                # 1. Detectar cuando el LLM está transmitiendo la respuesta final
+                if kind == "on_chat_model_stream":
+                    content = event["data"]["chunk"].content
+                    if content:
+                        # Enviamos tipo 'token' para que el frontend lo sume al chat
+                        yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
+                
+                # 2. Detectar cuando se llama a una herramienta (Retriever)
+                elif kind == "on_tool_start":
+                    tool_name = event["name"]
+                    if tool_name == "knowledge_base_retriever":
+                        yield f"data: {json.dumps({'type': 'status', 'content': 'Buscando en la base de conocimientos...'})}\n\n"
+                    else:
+                        yield f"data: {json.dumps({'type': 'status', 'content': f'Usando herramienta: {tool_name}...'})}\n\n"
+                
+                # 3. Detectar nodos de validación (Guardrails/Graders)
+                elif kind == "on_chain_start":
+                    node_name = event.get("name")
+                    if node_name == "grade_documents":
+                        yield f"data: {json.dumps({'type': 'status', 'content': 'Evaluando relevancia de los documentos...'})}\n\n"
+                    elif node_name == "grade_hallucinations":
+                        yield f"data: {json.dumps({'type': 'status', 'content': 'Verificando alucinaciones...'})}\n\n"
+
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+            
+    # El media_type es crucial para que el frontend (ej. Vercel AI SDK) lo lea como un stream continuo
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 @router.post("/dead-letter-queue-rabbit")
 def check_dlq_health():

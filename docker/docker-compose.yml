@@ -72,6 +72,24 @@ services:
   # Aplicaciones
   # ============================================
 
+  # Migraciones de base de datos (Alembic)
+  db-migrate:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: api
+    container_name: personal_ai_db_migrate
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: ../.env.local
+    environment:
+      - DB_HOST=db
+    volumes:
+      - ..:/app
+    command: alembic upgrade head
+    restart: "no"
+
   # FastAPI API
   api:
     build:
@@ -80,8 +98,8 @@ services:
       target: api
     container_name: personal_ai_api
     depends_on:
-      db:
-        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
       chromadb:
         condition: service_started
       redis:
@@ -160,13 +178,13 @@ services:
         condition: service_started
       kafka-init-topics:
         condition: service_completed_successfully
+      db-migrate:
+        condition: service_completed_successfully
       rabbitmq:
-        condition: service_healthy
-      db:
         condition: service_healthy
     env_file: ../.env.local
     environment:
-      - APP_ENV=production
+      - APP_ENV=local
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - REDIS_URL=redis://redis:6379/0
       - RABBITMQ_URL=pyamqp://guest:guest@rabbitmq:5672//
