@@ -91,7 +91,7 @@ Para manejar el historial de chats, los estados de carga y la caché del lado de
 
 # Fase 5: Despliegue Cloud-Native y Observabilidad
 ver tema de pre-produccion antes de hacer todo el despliegue.
-
+Probar con kubernets local antes de iniciar el de la nube
 
 Migración a la nube bajo un modelo de costos optimizado.
 Infraestructura: Kubernetes (EKS), Docker (Multi-stage builds).
