@@ -41,11 +41,14 @@ Actualmente hemos **finalizado la Fase 4**. El sistema ahora soporta orquestaci�
 
 ## 📂 Estructura del Proyecto
 
+### 📂 General
+
 ```text
 ├── docker/                 # Configuración de contenedores (docker-compose, Dockerfiles)
 ├── docs/                   # Documentación extensa (Resúmenes, decisiones y guías por fase)
 │   └── fase1/              # Detalles técnicos de la Fase 1 (API, Chunking, Testcontainers)
 ├── postman/                # Colecciones para pruebas de endpoints
+├── frontend/               # Código frontend
 ├── src/                    # Código fuente
 │   ├── api/                # Endpoints y enrutadores de FastAPI
 │   ├── core/               # Lógica de Agentes LangGraph, Prompts, GraphStates
@@ -61,6 +64,50 @@ Actualmente hemos **finalizado la Fase 4**. El sistema ahora soporta orquestaci�
 ├── pytest.ini              # Configuración de recolección de pruebas asíncronas
 └── requirements.txt        # Dependencias principales del proyecto
 ```
+### 📂 Frontend
+
+```text
+frontend/
+├── public/                 # Imágenes, iconos, fuentes
+├── src/
+│   ├── app/                # 🚦 App Router: SOLO rutas, layouts y páginas
+│   │   ├── (auth)/         # Grupos de rutas (ej. /login, /register) sin afectar la URL
+│   │   ├── dashboard/      # Ruta /dashboard
+│   │   ├── layout.tsx      # Layout principal
+│   │   └── page.tsx        # Página de inicio (/)
+│   │
+│   ├── components/         # 🧱 Componentes de UI reutilizables
+│   │   ├── common/         # Botones, Inputs, Modales genéricos
+│   │   └── layout/         # Navbar, Sidebar, Footer
+│   │
+│   ├── lib/                # 🛠️ Configuraciones y utilidades de librerías
+│   │   └── axios.ts        # Configuración de tu cliente HTTP (interceptores, tokens)
+│   │
+│   ├── services/           # 🔌 Llamadas a tu API (Backend)
+│   │   ├── auth.service.ts # Funciones de login, logout
+│   │   └── user.service.ts # Funciones para obtener datos del usuario
+│   │
+│   ├── hooks/              # 🪝 Custom React Hooks (ej. useAuth, useFetch)
+│   │
+│   ├── store/              # 📦 Estado global (Zustand, Context API o Redux)
+│   │
+│   ├── types/              # 🏷️ Interfaces y tipos de TypeScript compartidos
+│   │
+│   └── utils/              # 🧮 Funciones puras (formatear fechas, validaciones)
+│
+├── .env.local              # Variables de entorno (URLs de la API, claves)
+├── next.config.mjs         # Configuración de Next.js
+├── package.json
+└── tailwind.config.ts
+```
+💡 Buenas prácticas para esta estructura:
+Mantén app/ ligero: Los archivos page.tsx dentro de app/ deberían dedicarse casi exclusivamente a obtener datos (Server Components) y pasárselos a componentes más pequeños. No escribas toda la UI ahí dentro.
+
+services/ es tu puente: Centraliza todas las llamadas HTTP aquí. Si mañana cambias la ruta de tu API, solo modificas un archivo en services/ y no tienes que buscar fetch por todos tus componentes.
+
+Usa indexación (Barrels): Dentro de tus carpetas (como components/common/), crea un archivo index.ts que exporte todo. Así podrás importar cosas de forma más limpia: import { Button, Input } from '@/components/common';.
+
+Se inicia con npm run dev
 
 ---
 
