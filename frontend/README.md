@@ -1,17 +1,20 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-## Getting Started
+## 🚀 Dependencias y Uso con pnpm
 
-First, run the development server:
+Este proyecto utiliza **pnpm** de forma estricta. Hemos activado medidas de seguridad (`ignore-scripts=true`) para proteger el entorno de desarrollo.
+
+### Reglas Clave:
+- **No uses `npm install` ni `yarn`**: Para instalar un paquete nuevo para producción usa `pnpm add <paquete>`. Si es para desarrollo (por ejemplo Jest o Tailwind), usa `pnpm add -D <paquete>`.
+- **`pnpm-lock.yaml` es sagrado**: Nunca lo modifiques a mano y asegúrate de commitearlo siempre.
+- **Si un paquete falla al instalarse**: Si alguna librería dependía de compilar módulos nativos en la instalación, fallará debido a nuestra seguridad. Si esto ocurre legítimamente, pnpm te informará y podrás correr `pnpm rebuild <paquete>` para darle permiso explícito de forma segura.
+
+### ▶️ Ejecutar el Proyecto (Development)
+
+Para iniciar el servidor de Next.js usa:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
 pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.

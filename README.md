@@ -69,33 +69,23 @@ Actualmente hemos **finalizado la Fase 4**. El sistema ahora soporta orquestaci�
 ```text
 frontend/
 ├── public/                 # Imágenes, iconos, fuentes
-├── src/
-│   ├── app/                # 🚦 App Router: SOLO rutas, layouts y páginas
-│   │   ├── (auth)/         # Grupos de rutas (ej. /login, /register) sin afectar la URL
-│   │   ├── dashboard/      # Ruta /dashboard
-│   │   ├── layout.tsx      # Layout principal
-│   │   └── page.tsx        # Página de inicio (/)
-│   │
-│   ├── components/         # 🧱 Componentes de UI reutilizables
-│   │   ├── common/         # Botones, Inputs, Modales genéricos
-│   │   └── layout/         # Navbar, Sidebar, Footer
-│   │
-│   ├── lib/                # 🛠️ Configuraciones y utilidades de librerías
-│   │   └── axios.ts        # Configuración de tu cliente HTTP (interceptores, tokens)
-│   │
-│   ├── services/           # 🔌 Llamadas a tu API (Backend)
-│   │   ├── auth.service.ts # Funciones de login, logout
-│   │   └── user.service.ts # Funciones para obtener datos del usuario
-│   │
-│   ├── hooks/              # 🪝 Custom React Hooks (ej. useAuth, useFetch)
-│   │
-│   ├── store/              # 📦 Estado global (Zustand, Context API o Redux)
-│   │
-│   ├── types/              # 🏷️ Interfaces y tipos de TypeScript compartidos
-│   │
-│   └── utils/              # 🧮 Funciones puras (formatear fechas, validaciones)
-│
-├── .env.local              # Variables de entorno (URLs de la API, claves)
+├── app/                # 🚦 App Router: SOLO rutas, layouts y páginas
+│   ├── (auth)/         # Grupos de rutas (ej. /login, /register) sin afectar la URL
+│   ├── dashboard/      # Ruta /dashboard
+│   ├── layout.tsx      # Layout principal
+│   └── page.tsx        # Página de inicio (/)
+├── components/         # 🧱 Componentes de UI reutilizables
+│   ├── common/         # Botones, Inputs, Modales genéricos
+│   └── layout/         # Navbar, Sidebar, Footer
+├── lib/                # 🛠️ Configuraciones y utilidades de librerías
+│   └── axios.ts        # Configuración de tu cliente HTTP (interceptores, tokens)
+├── services/           # 🔌 Llamadas a tu API (Backend)
+│   ├── auth.service.ts # Funciones de login, logout
+│   └── user.service.ts # Funciones para obtener datos del usuario
+├── hooks/              # 🪝 Custom React Hooks (ej. useAuth, useFetch)
+├── store/              # 📦 Estado global (Zustand, Context API o Redux)
+├── types/              # 🏷️ Interfaces y tipos de TypeScript compartidos
+├── utils/              # 🧮 Funciones puras (formatear fechas, validaciones)
 ├── next.config.mjs         # Configuración de Next.js
 ├── package.json
 └── tailwind.config.ts
