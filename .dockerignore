@@ -1,0 +1,53 @@
+# ============================================================
+# Git
+.git
+.gitignore
+.github/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+.deepeval/
+
+# Virtual envs
+.venv/
+venv/
+ENV/
+
+# IDE / OS
+.vscode/
+.idea/
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Logs y temporales
+logs/
+*.log
+*.txt
+stats.txt
+node_stats*.txt
+k3d-logs*.txt
+helm-repos.txt
+
+# Secrets (nunca en imagen)
+.env
+.env.*
+!.env.example
+
+# Directorios que no van en la imagen
+docs/
+frontend/
+.postman/
+postman/
+k8s/
+alembic/
+
+# Archivos de config de Docker (no van dentro de la imagen)
+docker-compose*.yml
+.dockerignore

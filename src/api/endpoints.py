@@ -202,10 +202,12 @@ async def ask_agent_stream(
                 
                 # 1. Detectar cuando el LLM está transmitiendo la respuesta final
                 if kind == "on_chat_model_stream":
-                    content = event["data"]["chunk"].content
-                    if content:
-                        # Enviamos tipo 'token' para que el frontend lo sume al chat
-                        yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
+                    # Solo emitir tokens si fueron generados por el nodo principal del agente
+                    if event.get("metadata", {}).get("langgraph_node") == "agent":
+                        content = event["data"]["chunk"].content
+                        if content:
+                            # Enviamos tipo 'token' para que el frontend lo sume al chat
+                            yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
                 
                 # 2. Detectar cuando se llama a una herramienta (Retriever)
                 elif kind == "on_tool_start":

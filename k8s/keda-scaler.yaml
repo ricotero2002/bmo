@@ -1,0 +1,16 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: celery-worker-scaler
+  namespace: personal-ai
+spec:
+  scaleTargetRef:
+    name: worker-deployment # A quién vamos a escalar (Deployment que creamos antes)
+  minReplicaCount: 0  # <--- MAGIA: Escala a cero si no hay trabajo (Ahorras RAM)
+  maxReplicaCount: 5
+  triggers:
+  - type: rabbitmq
+    metadata:
+      queueName: ingest_q  # <--- CAMBIA ESTO (antes decía 'celery')
+      host: amqp://guest:guest@172.21.0.1:5672/
+      queueLength: "5" # Cada 5 mensajes encolados, pide iniciar un Pod adicional

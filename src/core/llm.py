@@ -10,6 +10,9 @@ class LLMFactory:
     
     @classmethod
     def create(cls, tools = None, response_format: Optional[Type[BaseModel]] = None) -> BaseChatModel:
+        from src.core.telemetry import TelemetryCallbackHandler
+        callbacks = [TelemetryCallbackHandler()]
+        
         gemini_api_key = os.getenv("GOOGLE_API_KEY", "")
         openai_api_key = os.getenv("OPENAI_API_KEY", "")
 
@@ -18,36 +21,42 @@ class LLMFactory:
             primary_model = ChatGoogleGenerativeAI(
                 model="gemini-2.5-flash-lite",
                 temperature=0,
-                google_api_key=gemini_api_key
+                google_api_key=gemini_api_key,
+                callbacks=callbacks
             )
         except Exception:
             # Fallback seguro en caso de que la clave de gemini esté vacía
             primary_model = ChatOpenAI(
                 model="gpt-4o-mini",
                 temperature=0,
-                openai_api_key=openai_api_key
+                openai_api_key=openai_api_key,
+                callbacks=callbacks
             )
         '''
         fallback_model = ChatOpenAI(
             model="gpt-4o-mini",
             temperature=0,
-            openai_api_key=openai_api_key
+            openai_api_key=openai_api_key,
+            callbacks=callbacks
         )
         '''
         fallback_model = ChatOpenAI(
             model="gemini-2.5-flash",
             temperature=0,
-            openai_api_key=gemini_api_key
+            openai_api_key=gemini_api_key,
+            callbacks=callbacks
         )
         fallback_model2 = ChatOpenAI(
             model="gemma-3-1b-it",
             temperature=0,
-            openai_api_key=gemini_api_key
+            openai_api_key=gemini_api_key,
+            callbacks=callbacks
         )
         fallback_model3 = ChatOpenAI(
             model="gemini-1.5-pro",
             temperature=0,
-            openai_api_key=gemini_api_key
+            openai_api_key=gemini_api_key,
+            callbacks=callbacks
         )
 
         # 3. Aplicar tools y structured output a TODOS los modelos (principal y fallbacks)

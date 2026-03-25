@@ -4,20 +4,16 @@ Un asistente personal de IA basado en la arquitectura **Self-RAG** (Retrieval-Au
 
 ## 🚀 Estado Actual del Proyecto
 
-Actualmente hemos **finalizado la Fase 4**. El sistema ahora soporta orquestación híbrida en la nube (AWS), persistencia mejorada, migraciones con Alembic, transaccionalidad distribuida y evaluación avanzada del comportamiento del agente.
+Actualmente hemos **finalizado la Fase 5 (Kubernetización Local y Observabilidad)**. El sistema ya cuenta con una infraestructura de microservicios robusta sobre **Kubernetes (k3d)**, escalado inteligente con **KEDA**, y un sistema de **Observabilidad** profesional (OpenTelemetry + Grafana Cloud). Además, el backend ya soporta **Streaming de Respuestas (SSE)**.
 
-**Características implementadas (Fase 4):**
-- **Providers Cloud-Native (AWS):** Soporte para S3, OpenSearch, RDS PostgreSQL y DynamoDB.
-- **Seguridad y Control de Agente:** Inyección de contexto de usuario para multi-tenancy y control estricto de alucinaciones.
-- **Streaming de Respuestas:** Integración de Server-Sent Events (SSE) en la API.
-- **Calidad de Respuestas (LLMOps):** Evaluaciones de métricas con DeepEval (Faithfulness, Answer Relevancy) y Pytest.
-- **Consistencia de Datos:** Borrado lógico distribuido (Saga) y migraciones de DB vía Alembic.
+**Hitos alcanzados (PreFase 5):**
+- **Orquestación K8s:** Despliegue de API, Workers y Consumidores en Kubernetes local.
+- **Auto-escalado:** Configuración de `ScaledObjects` (KEDA) y `HPA` (CPU).
+- **Observabilidad:** Pipeline de trazas y métricas con OTel Collector y Grafana Cloud.
+- **Backend Streaming:** Motor de respuestas en tiempo real para el chat.
 
-> [!NOTE]
-> Esta versión sentó las bases sólidas del backend. La capa visual interactiva y los tests E2E serán abordados en la siguiente Fase pre-5.
-
-> [!WARNING]
-> **Pendiente:** La parte del **Cache del LLM** (Inferencia) utilizando Redis no fue implementada en esta fase y queda como mejora próxima.
+> [!TIP]
+> Para el detalle técnico de la última fase, consulta [Fase 5: Kubernetización Local y Observabilidad](docs/fase5/prefase5_completa.md).
 
 ---
 
@@ -25,27 +21,28 @@ Actualmente hemos **finalizado la Fase 4**. El sistema ahora soporta orquestaci�
 
 *   ✅ **Fase 1: Cimientos y RAG Inteligente Local** (¡Completada!)
 *   ✅ **Fase 2: Asincronía y Escalabilidad (Workers)** (¡Completada!)
-    *   Integración de RabbitMQ, Celery y Redis para delegar la ingesta asíncrona pesada. Replicación de workers y monitoreo.
 *   ✅ **Fase 3: Ingesta Robusta de Datos (Kafka & MinIO)** (¡Completada!)
-    *   Kafka (KRaft), MinIO, Rastreo de estado en Postgres e Idempotencia.
-*   ✅ **Fase 4: Orquestación Agéntica, Persistencia y Evaluación Estricta** (¡Completada!)
-    *   Migración Cloud (AWS), API Streaming (SSE), metadatos, control riguroso de LLM y CI/CD con DeepEval/Pytest.
-*   ⏳ **Fase pre5: Frontend, Usuarios y Mejores Tests** (En Progreso)
-    *   Creación del frontend. Agregar gestión de usuarios para deployment (sesiones, control de tasas de uso) y tests E2E.
-*   ⏳ **Fase 5: Despliegue Cloud-Native y Observabilidad** (Pendiente)
-    *   Alistamiento para AWS EKS (Kubernetes), OpenTelemetry y despliegue por componentes.
-*   ⏳ **Fase 6: GraphRAG y Grafos de Conocimiento** (Pendiente)
-    *   Neo4j/OpenSearch para grafos de conocimiento y relaciones complejas.
+*   ✅ **Fase 4: Orquestación Agéntica y Persistencia** (¡Completada!)
+*   ✅ **PreFase 5: Kubernetización Local y Observabilidad** (¡Completada!)
+*   ⏳ **Fase 5: Despliegue en la Nube (OCI/AWS) y Usuarios** (En Progreso)
+    *   Migración de k3d a OKE (Oracle)/EKS (AWS). Gestión de sesiones de usuario y persistencia cloud-native.
+*   ⏳ **Fase 6: Frontend, Usuarios y Seguridad** (Pendiente)
+    *   Interfaz moderna (Next.js), Streaming UI, Gestión de Sesiones y Autenticación.
+*   ⏳ **Fase 7: GraphRAG y Grafos de Conocimiento** (Pendiente)
+    *   Neo4j para descubrimiento de relaciones complejas.
 
 ---
 
 ## 📂 Estructura del Proyecto
+
+### 📂 General
 
 ```text
 ├── docker/                 # Configuración de contenedores (docker-compose, Dockerfiles)
 ├── docs/                   # Documentación extensa (Resúmenes, decisiones y guías por fase)
 │   └── fase1/              # Detalles técnicos de la Fase 1 (API, Chunking, Testcontainers)
 ├── postman/                # Colecciones para pruebas de endpoints
+├── frontend/               # Código frontend
 ├── src/                    # Código fuente
 │   ├── api/                # Endpoints y enrutadores de FastAPI
 │   ├── core/               # Lógica de Agentes LangGraph, Prompts, GraphStates
@@ -61,6 +58,40 @@ Actualmente hemos **finalizado la Fase 4**. El sistema ahora soporta orquestaci�
 ├── pytest.ini              # Configuración de recolección de pruebas asíncronas
 └── requirements.txt        # Dependencias principales del proyecto
 ```
+### 📂 Frontend
+
+```text
+frontend/
+├── public/                 # Imágenes, iconos, fuentes
+├── app/                # 🚦 App Router: SOLO rutas, layouts y páginas
+│   ├── (auth)/         # Grupos de rutas (ej. /login, /register) sin afectar la URL
+│   ├── dashboard/      # Ruta /dashboard
+│   ├── layout.tsx      # Layout principal
+│   └── page.tsx        # Página de inicio (/)
+├── components/         # 🧱 Componentes de UI reutilizables
+│   ├── common/         # Botones, Inputs, Modales genéricos
+│   └── layout/         # Navbar, Sidebar, Footer
+├── lib/                # 🛠️ Configuraciones y utilidades de librerías
+│   └── axios.ts        # Configuración de tu cliente HTTP (interceptores, tokens)
+├── services/           # 🔌 Llamadas a tu API (Backend)
+│   ├── auth.service.ts # Funciones de login, logout
+│   └── user.service.ts # Funciones para obtener datos del usuario
+├── hooks/              # 🪝 Custom React Hooks (ej. useAuth, useFetch)
+├── store/              # 📦 Estado global (Zustand, Context API o Redux)
+├── types/              # 🏷️ Interfaces y tipos de TypeScript compartidos
+├── utils/              # 🧮 Funciones puras (formatear fechas, validaciones)
+├── next.config.mjs         # Configuración de Next.js
+├── package.json
+└── tailwind.config.ts
+```
+💡 Buenas prácticas para esta estructura:
+Mantén app/ ligero: Los archivos page.tsx dentro de app/ deberían dedicarse casi exclusivamente a obtener datos (Server Components) y pasárselos a componentes más pequeños. No escribas toda la UI ahí dentro.
+
+services/ es tu puente: Centraliza todas las llamadas HTTP aquí. Si mañana cambias la ruta de tu API, solo modificas un archivo en services/ y no tienes que buscar fetch por todos tus componentes.
+
+Usa indexación (Barrels): Dentro de tus carpetas (como components/common/), crea un archivo index.ts que exporte todo. Así podrás importar cosas de forma más limpia: import { Button, Input } from '@/components/common';.
+
+Se inicia con npm run dev
 
 ---
 

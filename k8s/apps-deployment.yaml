@@ -1,0 +1,171 @@
+# 1. Namespace para organizar todo
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: personal-ai
+
+---
+# 2. Service Interno para FastAPI
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-service
+  namespace: personal-ai
+spec:
+  type: ClusterIP # Solo visible dentro del clúster
+  selector:
+    app: api
+  ports:
+    - port: 80
+      targetPort: 8000
+
+---
+# 3. Ingress: La puerta de entrada al clúster
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api-ingress
+  namespace: personal-ai
+  annotations:
+    ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: api-service
+            port:
+              number: 80
+
+---
+# 4. Deployment de FastAPI
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-deployment
+  namespace: personal-ai
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      hostAliases:
+      - ip: "172.21.0.1"
+        hostnames:
+        - "host.k3d.internal"
+      containers:
+      - name: api
+        image: personal_ai_api:latest # Tu imagen compilada
+        imagePullPolicy: Never # Importante para usar imágenes locales importadas
+        resources:
+          requests:
+            cpu: "100m"
+          limits:
+            cpu: "500m"
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - secretRef:
+            name: app-secrets # Sincronizado vía Infisical
+        - configMapRef:
+            name: app-config # Las URLs, DB_HOST y OTEL_ENDPOINT
+        env:
+          - name: OTEL_SERVICE_NAME
+            value: "personal-ai-api"
+
+---
+# 5. Deployment del Worker (Lo que KEDA va a escalar)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-deployment
+  namespace: personal-ai
+spec:
+  replicas: 1 # KEDA manejará esto una vez instalado
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      hostAliases:
+      - ip: "172.21.0.1"
+        hostnames:
+        - "host.k3d.internal"
+      containers:
+      - name: worker
+        image: personal_ai_worker:latest
+        imagePullPolicy: Never
+        command: ["celery", "-A", "src.workers.celery_app", "worker", "--loglevel=info", "--concurrency=2"]
+        envFrom:
+        - secretRef:
+            name: app-secrets # Sincronizado vía Infisical
+        - configMapRef:
+            name: app-config # Las URLs, DB_HOST y OTEL_ENDPOINT
+        env:
+          - name: OTEL_SERVICE_NAME
+            value: "bmo"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-exporter
+  namespace: personal-ai
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: celery-exporter
+  template:
+    metadata:
+      labels:
+        app: celery-exporter
+      annotations:
+        # ¡La magia! Grafana Alloy buscará automáticamente pods con estas etiquetas
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9808"
+    spec:
+      # Mantenemos el alias para que pueda conectarse a tu RabbitMQ local
+      hostAliases:
+      - ip: "172.21.0.1" 
+        hostnames:
+        - "host.k3d.internal"
+      containers:
+      - name: exporter
+        image: danihodovic/celery-exporter:latest
+        ports:
+        - containerPort: 9808
+          name: metrics
+        env:
+        # Mapeamos la variable del exporter al valor que ya tienes en tu ConfigMap
+        - name: CE_BROKER_URL
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: CELERY_BROKER_URL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: celery-exporter-service
+  namespace: personal-ai
+  labels:
+    app: celery-exporter
+spec:
+  selector:
+    app: celery-exporter
+  ports:
+  - name: metrics
+    port: 9808
+    targetPort: 9808
+  type: ClusterIP

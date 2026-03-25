@@ -12,6 +12,16 @@ from langchain_core.tools.retriever import create_retriever_tool
 from src.tools.registry import ToolRegistry
 from src.providers.database.status_provider import StatusProvider
 from src.providers.storage.factory import StorageFactory
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry import metrics
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+import os
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -41,7 +51,25 @@ async def lifespan(app: FastAPI):
         yield
         # Shutdown: al salir del with, el checkpointer cierra su pool correctamente
 
+# Configuración de OpenTelemetry (Solo si se provee el endpoint)
+otel_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+if otel_endpoint:
+    # 1. Configurar Trazas
+    provider = TracerProvider()
+    processor = BatchSpanProcessor(OTLPSpanExporter(endpoint=otel_endpoint, insecure=True))
+    provider.add_span_processor(processor)
+    trace.set_tracer_provider(provider)
+
+    # 2. Configurar Métricas
+    metric_reader = PeriodicExportingMetricReader(OTLPMetricExporter(endpoint=otel_endpoint, insecure=True))
+    metric_provider = MeterProvider(metric_readers=[metric_reader])
+    metrics.set_meter_provider(metric_provider)
+
 app = FastAPI(lifespan=lifespan)
+
+# Instrumentar FastAPI tras instanciar el app
+if otel_endpoint:
+    FastAPIInstrumentor.instrument_app(app)
 
 app.add_middleware(
     CORSMiddleware,

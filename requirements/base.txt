@@ -1,0 +1,61 @@
+# ============================================================
+# BASE: Dependencias compartidas entre API y Worker
+# Usadas en Produccion Y en Local
+# ============================================================
+
+# --- LangChain / LangGraph ---
+langchain-chroma==1.1.0
+langchain-google-genai==4.2.1
+langchain-text-splitters==1.1.1
+langchain-community==0.4.1
+langchain-core==1.2.18
+langchain==1.2.12
+langchain-openai==1.1.11
+langchain-redis==0.2.5
+langchain-classic==1.0.2
+langgraph==1.1.2
+langgraph-checkpoint==4.0.1
+langgraph-checkpoint-postgres==3.0.4
+langgraph-prebuilt==1.0.8
+langgraph-sdk==0.3.11
+
+# --- Vector Store ---
+chromadb==1.5.5
+
+# --- Pydantic / Config ---
+pydantic==2.12.5
+pydantic-settings==2.13.1
+python-dotenv==1.2.2
+
+# --- Database ---
+SQLAlchemy==2.0.48
+alembic==1.15.2
+psycopg2-binary==2.9.10
+psycopg[binary,pool]
+
+# --- Celery / Redis ---
+celery[redis,pyamqp]==5.6.2
+redis==6.4.0
+redisvl==0.15.0
+
+# --- Storage / Cloud ---
+minio
+boto3
+requests-aws4auth
+opensearch-py
+
+# --- Messaging ---
+confluent-kafka==2.13.2
+
+# --- Logging ---
+loguru
+
+# --- Observability (OpenTelemetry) ---
+opentelemetry-api==1.27.0
+opentelemetry-sdk==1.27.0
+opentelemetry-exporter-otlp==1.27.0
+opentelemetry-exporter-otlp-proto-grpc==1.27.0
+opentelemetry-instrumentation-fastapi==0.48b0
+opentelemetry-instrumentation-celery==0.48b0
+opentelemetry-distro==0.48b0
+setuptools<82.0.0

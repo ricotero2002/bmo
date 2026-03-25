@@ -27,7 +27,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install -r requirements/local.txt
     
     # Nota: Testcontainers levantará Docker por su cuenta en background
     - name: Run Unit and Integration Tests
