@@ -1,0 +1,89 @@
+mode: deployment
+
+image:
+  repository: "otel/opentelemetry-collector-contrib"
+
+config:
+  # 1. Declaramos las extensiones (Salud + Autenticación)
+  extensions:
+    health_check: {}
+    basicauth/grafana:
+      client_auth:
+        # Usamos env vars para no hardcodear secretos
+        username: "${env:GRAFANA_USERNAME}"
+        password: "${env:GRAFANA_TOKEN}"
+
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+    prometheus:
+      config:
+        scrape_configs:
+          - job_name: 'kubernetes-pods'
+            kubernetes_sd_configs:
+              - role: pod
+            relabel_configs:
+              - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                action: keep
+                regex: true
+              - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+                action: replace
+                target_label: __address__
+                regex: ([^:]+)(?::\d+)?;(\d+)
+                replacement: $1:$2
+              - source_labels: [__meta_kubernetes_namespace]
+                action: replace
+                target_label: kubernetes_namespace
+              - source_labels: [__meta_kubernetes_pod_name]
+                action: replace
+                target_label: kubernetes_pod_name
+  
+  exporters:
+    otlp_http:
+      endpoint: "https://otlp-gateway-prod-us-east-2.grafana.net/otlp" 
+      # 2. Le decimos al exporter que use la extensión de autenticación
+      auth:
+        authenticator: basicauth/grafana
+
+  processors:
+    batch:
+      send_batch_size: 8192
+      timeout: 1s
+    memory_limiter:
+      check_interval: 1s
+      limit_percentage: 75
+      spike_limit_percentage: 15
+
+  service:
+    # 3. Activamos ambas extensiones
+    extensions: [health_check, basicauth/grafana]
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [otlp_http]
+      metrics:
+        receivers: [otlp, prometheus]
+        processors: [memory_limiter, batch]
+        exporters: [otlp_http]
+      logs:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [otlp_http]
+
+# 4. Inyectamos los secretos como variables de entorno al contenedor
+extraEnvs:
+  - name: GRAFANA_USERNAME
+    valueFrom:
+      secretKeyRef:
+        name: app-secrets
+        key: GRAFANA_USERNAME
+  - name: GRAFANA_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: app-secrets
+        key: GRAFANA_TOKEN

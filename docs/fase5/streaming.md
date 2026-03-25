@@ -136,3 +136,8 @@ export default function ChatInterface() {
 }
 ¿Qué hace FastAPI del otro lado?
 Para que esto funcione, tu endpoint de FastAPI (/api/v1/chat/stream) simplemente debe recibir el array de mensajes y usar un StreamingResponse de Starlette/FastAPI para ir devolviendo los fragmentos de texto (chunks) a medida que Gemini los genera.
+
+
+
+
+Módulos no encontrados: Borré ReasoningBlock y SourceList y los reemplacé por renderizado directo en el mapeo (puedes volver a abstraerlos luego cuando los crees).

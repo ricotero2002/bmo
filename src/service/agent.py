@@ -10,7 +10,7 @@ from src.schemas.graph_state import GraphState, GradeDocuments, GradeHallucinati
 from src.service.prompt_loader import PromptLoader
 from src.tools.metadata_filter import TOOL_ERROR_PREFIX
 from langchain_core.prompts import PromptTemplate
-
+from src.core.telemetry import TelemetryCallbackHandler # <-- Agrega la importación
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 2
@@ -21,7 +21,9 @@ _RETRIEVER_TOOL_NAME = "knowledge_base_retriever"
 class AgentService:
     def __init__(self, llm_factory, tools, checkpointer):
         self.llm_factory = llm_factory
-        self.model = llm_factory.create(tools=tools)
+        self.model = llm_factory.create(tools=tools).with_config(
+            {"callbacks": [TelemetryCallbackHandler()]}
+        )
         self.grader_docs_model = llm_factory.create(response_format=GradeDocuments)
         self.grader_hallucinations_model = llm_factory.create(response_format=GradeHallucinations)
         self.tools = tools

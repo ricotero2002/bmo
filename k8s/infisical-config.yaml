@@ -1,0 +1,28 @@
+# infisical-config.yaml
+apiVersion: secrets.infisical.com/v1alpha1
+kind: InfisicalSecret
+metadata:
+  name: app-secrets-sync
+  namespace: personal-ai
+spec:
+  hostAPI: https://app.infisical.com/api
+  syncConfig:
+    resyncInterval: 60s
+
+  authentication:
+    universalAuth:
+      secretsScope:
+        projectSlug: "bmo-ai-assistant-qd7o" # Slug de tu proyecto en Infisical
+        envSlug: "dev"                  # Slug del environment ("dev", "prod", etc.)
+        secretsPath: "/"               # Path raíz de los secretos
+      credentialsRef:
+        secretName: infisical-auth-secret
+        secretNamespace: personal-ai
+
+  managedKubeSecretReferences:
+    - secretName: app-secrets
+      secretNamespace: personal-ai
+      creationPolicy: "Orphan"
+    - secretName: app-secrets
+      secretNamespace: observability
+      creationPolicy: "Orphan"

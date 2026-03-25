@@ -15,9 +15,9 @@ def delivery_report(err, msg):
         print(f'Mensaje entregado a {msg.topic()} [{msg.partition()}]')
 
 def test_large_file_ingestion_direct(size_mb: int = 100):
-    user_id = "user_large_test"
+    user_id = "agustin"
     # USAMOS UN ID FIJO PARA PROBAR IDEMPOTENCIA
-    doc_id = uuid.UUID("baaaaaad-f00d-4000-8000-000000000000")
+    doc_id = uuid.UUID("baaaaaad-f00d-4000-8000-000000000015")
     filename = f"heavy_direct_{size_mb}mb.txt"
     
     print(f"--- Iniciando prueba de archivo pesado DIRECTO ({size_mb} MB) ---")

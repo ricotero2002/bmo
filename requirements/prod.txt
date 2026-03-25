@@ -1,0 +1,19 @@
+# ============================================================
+# PROD: API de produccion y Worker
+# Include: base.txt + dependencias de runtime
+# Build: docker build --target final-api -t personal_ai_api:latest .
+# ============================================================
+-r base.txt
+
+# --- API / Web ---
+fastapi==0.135.1
+uvicorn==0.41.0
+python-multipart==0.0.22
+httpx
+jinja2
+
+# --- Document Processing ---
+markitdown[all]
+
+# --- External Services ---
+pyowm

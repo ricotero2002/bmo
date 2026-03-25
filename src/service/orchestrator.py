@@ -99,6 +99,10 @@ class IngestionOrchestrator:
                 queue="ingest_q"
             )
             
+            # Sumamos 1 al contador de éxito (intento de ingesta encolado)
+            from src.core.telemetry import metrics_registry
+            metrics_registry.docs_processed.add(1, {"status": "queued", "file_type": filename.split('.')[-1] if '.' in filename else "unknown"})
+
             return {
                 "status": "queued",
                 "doc_id": str(doc_id),
@@ -107,6 +111,8 @@ class IngestionOrchestrator:
             
         except Exception as e:
             logger.error(f"Error en orquestación para {doc_id}: {e}")
+            from src.core.telemetry import metrics_registry
+            metrics_registry.docs_processed.add(1, {"status": "error", "phase": "orchestration"})
             try:
                 self.status_provider.update_status(doc_id, "failed", error_msg=str(e))
             except:

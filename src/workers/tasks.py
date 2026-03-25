@@ -53,6 +53,7 @@ def process_document_task(self, doc_id: str, filename: str, user_id: Optional[st
     status_provider = StatusProvider()
     storage_provider = StorageFactory.get_storage()
     job_uuid = uuid.UUID(doc_id)
+    start_time = time.time()
     
     try:
         # 1. Actualizar estado a 'processing'
@@ -73,7 +74,16 @@ def process_document_task(self, doc_id: str, filename: str, user_id: Optional[st
         # 4. Extraer texto
         logger.info(f"Extraer texto del archivo")
         status_provider.update_status(job_uuid, "extracting")
+        
+        # --- METRIC: Extraction Duration ---
+        ext_start = time.time()
         text = extraction_service.extract_text_from_bytes(content, filename)
+        duration = time.time() - ext_start
+        
+        from src.core.telemetry import metrics_registry
+        metrics_registry.extraction_duration.record(duration, {"file_type": filename.split('.')[-1] if '.' in filename else "unknown"})
+        # ----------------------------------
+
         # Usamos el doc_id como clave primaria lógica en el record manager
         logger.info(f"Creando documento")
         status_provider.update_status(job_uuid, "documenting")
@@ -106,6 +116,10 @@ def process_document_task(self, doc_id: str, filename: str, user_id: Optional[st
         # 7. Marcar como completado
         status_provider.update_status(job_uuid, "indexed")
         
+        # --- METRIC: Success ---
+        metrics_registry.docs_processed.add(1, {"status": "success", "file_type": filename.split('.')[-1] if '.' in filename else "unknown"})
+        # -----------------------
+
         logger.info(f"Procesamiento completado para {filename}")
         return {
             "status": "completed",

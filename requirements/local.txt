@@ -1,0 +1,19 @@
+# ============================================================
+# LOCAL: Incluye prod + herramientas de desarrollo y testing
+# Usado para: docker-compose local, tests, debug
+# Build: docker build --target local -t personal_ai_api:local .
+# ============================================================
+-r prod.txt
+
+# --- Celery Monitoring ---
+flower
+
+# --- Testing ---
+pytest
+pytest-asyncio==1.3.0
+pytest-mock==3.15.1
+pytest-timeout==2.4.0
+testcontainers[chroma,postgres]==4.14.1
+
+# --- LLM Evaluation ---
+deepeval

@@ -1,0 +1,30 @@
+# app-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: personal-ai
+data:
+  APP_ENV: "local"
+  LOG_LEVEL: "info"
+  DB_HOST: "host.k3d.internal"
+  DB_PORT: "5432"
+  CHROMA_HOST: "host.k3d.internal"
+  CHROMA_PORT: "8000"
+  # URLs y configuraciones (pueden ir a Infisical si tienen contraseñas de prod)
+  REDIS_URL: "redis://host.k3d.internal:6379/0"
+  RABBITMQ_URL: "pyamqp://guest:guest@host.k3d.internal:5672//"
+  CELERY_BROKER_URL: "pyamqp://guest:guest@host.k3d.internal:5672//"
+  CELERY_RESULT_BACKEND: "redis://host.k3d.internal:6379/0"
+  MINIO_ENDPOINT: "host.k3d.internal:9000"
+  KAFKA_BOOTSTRAP_SERVERS: "host.k3d.internal:9092"
+  KAFKA_MESSAGE_MAX_BYTES: "104857600"
+  COLLECTION_NAME: "example_collection"
+  LANGSMITH_PROJECT: "BMO"
+  
+  # --- OpenTelemetry ---
+  OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector-opentelemetry-collector.observability.svc.cluster.local:4317"
+  OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+  OTEL_RESOURCE_ATTRIBUTES: "service.namespace=personal-ai,deployment.environment=dev"
+  LANGCHAIN_TRACING_V2: "true"
+

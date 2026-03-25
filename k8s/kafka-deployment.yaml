@@ -1,0 +1,36 @@
+# k8s/kafka-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-consumer-deployment
+  namespace: personal-ai
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: kafka-consumer
+  template:
+    metadata:
+      labels:
+        app: kafka-consumer
+    spec:
+      hostAliases:
+      - ip: "172.21.0.1"
+        hostnames:
+        - "host.k3d.internal"
+      containers:
+      - name: kafka-consumer
+        image: personal_ai_worker:latest # Reusamos la imagen base que ya tiene confluent-kafka
+        imagePullPolicy: Never
+        # El entrypoint para ejecutar el consumidor script directamente
+        command: ["python", "-m", "src.workers.kafka_consumer"]
+        envFrom:
+        - secretRef:
+            name: app-secrets
+        - configMapRef:
+            name: app-config
+        env:
+          - name: OTEL_SERVICE_NAME
+            value: "kafka-consumer"
+          - name: PYTHONUNBUFFERED # <--- ESTO FUERZA A PYTHON A MOSTRAR LOS LOGS EN TIEMPO REAL
+            value: "1"
