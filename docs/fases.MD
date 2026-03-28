@@ -53,3 +53,6 @@ Costos: Utiliza instancias Spot para los workers de procesamiento y Amazon Bedro
 
 ---
 *Este roadmap refleja la evolución técnica del proyecto hacia una arquitectura Cloud-Native.*
+
+kubectl apply -f k8s/prod/
+kubectl rollout restart deployment -n personal-ai

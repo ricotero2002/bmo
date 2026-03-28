@@ -35,20 +35,26 @@ class ExtractionService:
         return text.strip()
 
     def create_document(self, text: str, filename: str, 
-                    file_hash: str = None,        # ← NUEVO
+                    file_hash: str = None,
                     user_id: str = None,
-                    page_number: int = None,       # ← NUEVO
+                    page_number: int = None,
                     chunk_index: int = None) -> Document:
         """Envuelve el texto en el formato que espera LangChain."""
         metadata = {
             "source": filename,
-            "file_hash": file_hash,
-            "created_at": datetime.now(timezone.utc).timestamp(),  # Unix timestamp (float) requerido por ChromaDB $gte
-            "page_number": page_number,
-            "chunk_index": chunk_index,
+            "created_at": datetime.now(timezone.utc).timestamp(),  # Unix timestamp (float)
         }
+        
+        # Pinecone RECHAZA valores nulos. Solo insertamos si tienen un valor real.
+        if file_hash is not None:
+            metadata["file_hash"] = file_hash
+        if page_number is not None:
+            metadata["page_number"] = page_number
+        if chunk_index is not None:
+            metadata["chunk_index"] = chunk_index
         if user_id:
             metadata["user_id"] = user_id
+            
         return Document(
             page_content=text, 
             metadata=metadata

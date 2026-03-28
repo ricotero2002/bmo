@@ -14,8 +14,8 @@ langchain-openai==1.1.11
 langchain-redis==0.2.5
 langchain-classic==1.0.2
 langgraph==1.1.2
-langgraph-checkpoint==4.0.1
-langgraph-checkpoint-postgres==3.0.4
+langgraph-checkpoint>=2.1.2,<3.0.0
+langgraph-checkpoint-postgres>=2.0.0
 langgraph-prebuilt==1.0.8
 langgraph-sdk==0.3.11
 
@@ -35,7 +35,7 @@ psycopg[binary,pool]
 
 # --- Celery / Redis ---
 celery[redis,pyamqp]==5.6.2
-redis==6.4.0
+redis>=5.0.0
 redisvl==0.15.0
 
 # --- Storage / Cloud ---
@@ -59,3 +59,8 @@ opentelemetry-instrumentation-fastapi==0.48b0
 opentelemetry-instrumentation-celery==0.48b0
 opentelemetry-distro==0.48b0
 setuptools<82.0.0
+langchain-pinecone
+pinecone-client
+oracledb
+langgraph-checkpoint-oracle
+certifi   # CA bundle para confluent-kafka en contenedores slim (Aiven SSL)

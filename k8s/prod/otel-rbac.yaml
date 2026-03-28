@@ -1,0 +1,22 @@
+# otel-rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-collector-discovery
+rules:
+- apiGroups: [""]
+  resources: ["pods", "nodes", "nodes/stats", "nodes/proxy", "services", "endpoints"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-collector-discovery-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-collector-discovery
+subjects:
+- kind: ServiceAccount
+  name: otel-collector-opentelemetry-collector  # Nombre estándar del SA de Helm
+  namespace: observability

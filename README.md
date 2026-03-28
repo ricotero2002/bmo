@@ -124,3 +124,9 @@ Luego de esto, puedes usar las colecciones provistas en `/postman` para interact
 ```bash
 python -m pytest src/tests/
 ```
+
+Acordarme los secretos de infisical, y el de ca de kafka.
+
+kubectl create secret generic kafka-ca-cert \
+  --from-file=ca.pem=./ca.pem \
+  -n personal-ai

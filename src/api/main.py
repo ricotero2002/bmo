@@ -67,9 +67,11 @@ if otel_endpoint:
 
 app = FastAPI(lifespan=lifespan)
 
-# Instrumentar FastAPI tras instanciar el app
+# Instrumentar FastAPI y Celery tras instanciar el app
 if otel_endpoint:
+    from opentelemetry.instrumentation.celery import CeleryInstrumentor
     FastAPIInstrumentor.instrument_app(app)
+    CeleryInstrumentor().instrument()  # Sella los mensajes hacia Celery con el Trace ID
 
 app.add_middleware(
     CORSMiddleware,

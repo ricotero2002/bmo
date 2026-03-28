@@ -13,7 +13,6 @@ data:
   CHROMA_PORT: "8000"
   # URLs y configuraciones (pueden ir a Infisical si tienen contraseñas de prod)
   REDIS_URL: "redis://host.k3d.internal:6379/0"
-  RABBITMQ_URL: "pyamqp://guest:guest@host.k3d.internal:5672//"
   CELERY_BROKER_URL: "pyamqp://guest:guest@host.k3d.internal:5672//"
   CELERY_RESULT_BACKEND: "redis://host.k3d.internal:6379/0"
   MINIO_ENDPOINT: "host.k3d.internal:9000"

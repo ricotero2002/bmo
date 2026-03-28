@@ -1,0 +1,121 @@
+================================================================================
+  VARIABLES A AGREGAR EN INFISICAL
+  Dashboard: https://app.infisical.com → Proyecto: bmo-ai-assistant → Env: prod
+================================================================================
+
+Estas son TODAS las claves nuevas que debes crear en Infisical para que la
+migración a cloud funcione. Las claves ya existentes (ej. GOOGLE_API_KEY,
+CELERY_BROKER_URL, REDIS_URL, LANGSMITH_API_KEY) no se repiten aquí.
+
+────────────────────────────────────────────────────────────────────────────────
+1. ORACLE AUTONOMOUS DATABASE (Always Free — OCI)
+────────────────────────────────────────────────────────────────────────────────
+
+  DB_HOST         → Endpoint público de tu AODB, ej: adb.us-ashburn-1.oraclecloud.com
+  DB_PORT         → 1521
+  DB_USER         → Usuario de la base de datos, ej: ADMIN
+  DB_PASSWORD     → Contraseña del usuario (mínimo 12 chars, mayúsculas + número + símbolo)
+  DB_SERVICE_NAME → Nombre del servicio TNS, ej: bmoai_high  (se encuentra en tnsnames.ora del wallet)
+
+  CÓMO OBTENER ESTOS VALORES:
+  1. OCI Console → Oracle Database → Autonomous Database → tu instancia
+  2. Haz clic en "DB Connection" → descarga el Wallet ZIP
+  3. Abre tnsnames.ora para ver los SERVICE_NAME disponibles
+  4. DB_HOST es el host de cualquier entrada en tnsnames.ora
+
+────────────────────────────────────────────────────────────────────────────────
+2. ORACLE DB WALLET (para Kubernetes — NO va en Infisical, va como K8s Secret)
+────────────────────────────────────────────────────────────────────────────────
+
+  El wallet es un ZIP. Su contenido debe montarse como un K8s Secret con:
+
+    kubectl create secret generic oracle-wallet-secret \
+      --from-file=cwallet.sso=/ruta/al/wallet/cwallet.sso \
+      --from-file=ewallet.p12=/ruta/al/wallet/ewallet.p12 \
+      --from-file=tnsnames.ora=/ruta/al/wallet/tnsnames.ora \
+      --from-file=sqlnet.ora=/ruta/al/wallet/sqlnet.ora \
+      -n personal-ai
+
+  Este secret es montado en /app/wallet por los deployments de API y Worker.
+  TNS_ADMIN=/app/wallet ya está configurado en el ConfigMap.
+
+  ALTERNATIVA (sin wallet — TLS solamente):
+  Si deshabilitas mTLS en OCI Console (Database → DB Connection → mTLS Required: OFF),
+  puedes conectarte sin wallet usando solo host:port/service_name. Útil para CI/CD.
+
+────────────────────────────────────────────────────────────────────────────────
+3. PINECONE (Plan Starter — Free)
+────────────────────────────────────────────────────────────────────────────────
+
+  PINECONE_API_KEY    → API Key de Pinecone (Pinecone Console → API Keys)
+  PINECONE_INDEX_NAME → Nombre del índice ya creado en Pinecone Console, ej: bmo-documents
+
+  CÓMO CREAR EL ÍNDICE:
+  1. console.pinecone.io → Create Index
+  2. Nombre: bmo-documents (u otro, debe coincidir con PINECONE_INDEX_NAME)
+  3. Dimensiones: 3072 (para el modelo gemini-embedding-001)
+  4. Metric: cosine
+  5. Serverless (Free) → Cloud: AWS, Region: us-east-1
+
+────────────────────────────────────────────────────────────────────────────────
+4. ORACLE OBJECT STORAGE — Credenciales S3-Compatible
+────────────────────────────────────────────────────────────────────────────────
+
+  OCI_NAMESPACE   → Namespace de Object Storage (OCI Console → Object Storage → Overview)
+  OCI_REGION      → Región de OCI, ej: us-ashburn-1
+  OCI_BUCKET_NAME → Nombre del bucket ya creado, ej: bmo-documents
+  OCI_ACCESS_KEY  → Access Key ID de "Customer Secret Keys" (ver instrucciones abajo)
+  OCI_SECRET_KEY  → Secret correspondiente al Access Key ID
+
+  CÓMO GENERAR OCI_ACCESS_KEY / OCI_SECRET_KEY:
+  1. OCI Console → Identity & Security → Users → tu usuario
+  2. Customer Secret Keys → Generate Secret Key
+  3. Copia el Secret Key EN ESE MOMENTO (no se puede ver de nuevo)
+  4. El Access Key ID se muestra en la lista después de generarlo
+
+  CÓMO CREAR EL BUCKET:
+  1. OCI Console → Storage → Object Storage → Create Bucket
+  2. Nombre: bmo-documents
+  3. Storage Tier: Standard
+  4. Enable "Emit Object Events": opcional
+
+================================================================================
+  RESUMEN DE TODAS LAS CLAVES NUEVAS (para copiar/pegar en Infisical)
+================================================================================
+
+  DB_HOST
+  DB_PORT
+  DB_USER
+  DB_PASSWORD
+  DB_SERVICE_NAME
+  PINECONE_API_KEY
+  PINECONE_INDEX_NAME
+  OCI_NAMESPACE
+  OCI_REGION
+  OCI_BUCKET_NAME
+  OCI_ACCESS_KEY
+  OCI_SECRET_KEY
+
+================================================================================
+  CLAVES EXISTENTES — confirmar que ya están en Infisical (no agregar de nuevo)
+================================================================================
+
+  GOOGLE_API_KEY
+  OPENAI_API_KEY           (si aplica)
+  LANGSMITH_API_KEY
+  CELERY_BROKER_URL        (CloudAMQP amqps://)
+  REDIS_URL                (Upstash rediss:// u otro)
+
+================================================================================
+  GITHUB ACTIONS SECRETS — agregar también en Settings → Secrets → Actions
+================================================================================
+
+  Para el job "cloud-connectivity" en develop.yml:
+
+  DB_HOST, DB_USER, DB_PASSWORD, DB_SERVICE_NAME
+  PINECONE_API_KEY, PINECONE_INDEX_NAME
+  CELERY_BROKER_URL, REDIS_URL
+  OCI_ACCESS_KEY, OCI_SECRET_KEY, OCI_NAMESPACE, OCI_REGION, OCI_BUCKET_NAME
+
+  NOTA: Para el test de Oracle en CI, desactivar mTLS en OCI Console para
+  no necesitar el wallet (ver sección 2 arriba).

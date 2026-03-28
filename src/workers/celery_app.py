@@ -37,6 +37,31 @@ celery_app.conf.update(
     # Resultados
     result_expires=3600,
     result_extended=True,
+
+    # Resiliencia del result backend (Redis / Upstash)
+    # Soporta tanto redis:// (local) como rediss:// (SSL, Upstash)
+    result_backend_transport_options={
+        "retry_policy": {
+            "timeout": 10.0,
+        },
+        "socket_keepalive": True,
+        "socket_timeout": 10,
+        "socket_connect_timeout": 10,
+        "retry_on_timeout": True,
+        "health_check_interval": 25,
+        # Requerido para rediss:// (SSL). CERT_NONE para Upstash y otros managed Redis
+        # que usan certificados propios. Cambiar a CERT_REQUIRED si usás cert válido.
+        "ssl_cert_reqs": "CERT_NONE",
+    },
+
+    # Resiliencia del broker (RabbitMQ / Redis)
+    broker_transport_options={
+        "confirm_publish": True,
+        "max_retries": 3,
+        "interval_start": 0,
+        "interval_step": 0.2,
+        "interval_max": 0.5,
+    },
     
     # Retry policy
     task_default_retry_delay=60,
@@ -76,33 +101,40 @@ celery_app.conf.update(
     # Monitoring
     worker_send_task_events=True,
     task_send_sent_event=True,
+    task_track_started=True,  # Crucial para celery_task_started_total
 )
 
-# Configuración de OpenTelemetry para el Worker
-otel_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-if otel_endpoint:
-    from opentelemetry import trace, metrics
-    from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.sdk.trace.export import BatchSpanProcessor
-    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-    from opentelemetry.sdk.metrics import MeterProvider
-    from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-    from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
-    from opentelemetry.instrumentation.celery import CeleryInstrumentor
+# Configuración de OpenTelemetry para el Worker (USANDO SEÑALES PARA EL FORK)
+from celery.signals import worker_process_init
 
-    # 1. Configurar el proveedor y el exportador
-    provider = TracerProvider()
-    processor = BatchSpanProcessor(OTLPSpanExporter(endpoint=otel_endpoint, insecure=True))
-    provider.add_span_processor(processor)
-    trace.set_tracer_provider(provider)
+@worker_process_init.connect(weak=False)
+def init_celery_tracing(*args, **kwargs):
+    otel_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+    if otel_endpoint:
+        from opentelemetry import trace, metrics
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+        from opentelemetry.sdk.metrics import MeterProvider
+        from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+        from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+        from opentelemetry.instrumentation.celery import CeleryInstrumentor
 
-    # 1.1 Configurar Proveedor de Métricas
-    metric_reader = PeriodicExportingMetricReader(OTLPMetricExporter(endpoint=otel_endpoint, insecure=True))
-    metric_provider = MeterProvider(metric_readers=[metric_reader])
-    metrics.set_meter_provider(metric_provider)
+        # IMPORTANTE: Configuramos un Provider NUEVO para cada proceso hijo
+        
+        # 1. Configurar Trazas
+        provider = TracerProvider()
+        processor = BatchSpanProcessor(OTLPSpanExporter(endpoint=otel_endpoint, insecure=True))
+        provider.add_span_processor(processor)
+        trace.set_tracer_provider(provider)
 
-    # 2. Encender los sensores de Celery
-    CeleryInstrumentor().instrument()
+        # 2. Configurar Métricas
+        metric_reader = PeriodicExportingMetricReader(OTLPMetricExporter(endpoint=otel_endpoint, insecure=True))
+        metric_provider = MeterProvider(metric_readers=[metric_reader])
+        metrics.set_meter_provider(metric_provider)
+
+        # 3. Encender los sensores de Celery
+        CeleryInstrumentor().instrument()
 
 # Periodic tasks
 celery_app.conf.beat_schedule = {
