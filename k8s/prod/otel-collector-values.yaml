@@ -3,6 +3,14 @@ mode: deployment
 image:
   repository: "otel/opentelemetry-collector-contrib"
 
+resources:
+  limits:
+    cpu: "250m"
+    memory: "512Mi"
+  requests:
+    cpu: "100m"
+    memory: "256Mi"
+
 config:
   extensions:
     health_check: {}
@@ -58,8 +66,8 @@ config:
       timeout: 1s
     memory_limiter:
       check_interval: 1s
-      limit_percentage: 75
-      spike_limit_percentage: 15
+      limit_mib: 150
+      spike_limit_mib: 50
     # ─── Novedad: Resource Processor (Inyecta nombre de cluster) ───
     resource:
       attributes:

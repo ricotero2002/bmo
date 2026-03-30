@@ -68,8 +68,10 @@ spec:
         resources:
           requests:
             cpu: "100m"
+            memory: "256Mi"
           limits:
             cpu: "500m"
+            memory: "512Mi"
         ports:
         - containerPort: 8000
         envFrom:
@@ -108,6 +110,13 @@ spec:
         image: personal_ai_worker:latest
         imagePullPolicy: Never
         command: ["celery", "-A", "src.workers.celery_app", "worker", "--loglevel=info", "--concurrency=2", "-E"]
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "1Gi"
         envFrom:
         - secretRef:
             name: app-secrets

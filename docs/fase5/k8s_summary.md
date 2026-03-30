@@ -468,3 +468,16 @@ kubectl delete scaledobject kafka-consumer-scaler -n personal-ai; kubectl get sc
 kubectl rollout restart deployment kafka-consumer-deployment -n personal-ai
 kubectl rollout restart deployment api-deployment -n personal-ai
 kubectl rollout restart deployment worker-deployment -n personal-ai
+
+Acordarme los secretos de infisical, y el de ca de kafka.
+
+kubectl create secret generic kafka-ca-cert \
+  --from-file=ca.pem=./ca.pem \
+  -n personal-ai
+
+
+kubectl create secret generic infisical-auth-secret `
+  --from-literal=clientId="TU_CLIENT_ID_REAL" `
+  --from-literal=clientSecret="TU_CLIENT_SECRET_REAL" `
+  --namespace personal-ai `
+  --dry-run=client -o yaml | kubectl apply -f -

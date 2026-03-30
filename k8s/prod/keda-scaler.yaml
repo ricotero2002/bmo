@@ -18,7 +18,7 @@ spec:
   scaleTargetRef:
     name: worker-deployment
   minReplicaCount: 0
-  maxReplicaCount: 5
+  maxReplicaCount: 2
   triggers:
   - type: rabbitmq
     metadata:
