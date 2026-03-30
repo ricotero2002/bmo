@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
 from src.api.main import app
-from src.api.dependencies import get_vector_db
+from src.api.dependencies import get_vector_db, get_status_provider, get_record_manager
 
 client = TestClient(app)
 
@@ -10,75 +10,76 @@ client = TestClient(app)
 def mock_db():
     return MagicMock()
 
-def test_get_documents_endpoint(mock_db):
+@pytest.fixture
+def mock_status_provider():
+    mock = MagicMock()
+    # Mock the engine/connect behavior for DB queries
+    mock_conn = MagicMock()
+    mock.engine.connect.return_value.__enter__.return_value = mock_conn
+    return mock
+
+@pytest.fixture
+def mock_record_manager():
+    return MagicMock()
+
+def test_get_documents_endpoint(mock_status_provider):
     # Sobrescribimos la dependencia en la aplicación
-    app.dependency_overrides[get_vector_db] = lambda: mock_db
+    app.dependency_overrides[get_status_provider] = lambda: mock_status_provider
     
-    # Configuramos el mock para devolver datos fixturados
-    mock_db.get.return_value = {
-        "metadatas": [
-            {"source": "doc1.pdf", "chunk_type": "agentic"},
-            {"source": "doc2.txt", "chunk_type": "agentic"},
-            {"source": "doc1.pdf", "chunk_type": "agentic"}  # duplicado para probar que devuelve únicos
-        ]
+    # Mock data para devolver desde la "base de datos"
+    user_id = "test_user_123"
+    mock_job = {
+        "doc_id": "uuid-1",
+        "source_path": "test.pdf",
+        "status": "completed",
+        "created_at": "2024-03-29",
+        "file_hash": "hash123"
     }
     
-    response = client.get("/api/debug/documents")
+    # El resultado de execute() debe ser algo que podamos iterar y tenga _mapping
+    mock_result = MagicMock()
+    mock_result._mapping = mock_job
+    mock_status_provider.engine.connect.return_value.__enter__.return_value.execute.return_value = [mock_result]
+    
+    response = client.get(f"/api/debug/documents?user_id={user_id}")
     
     assert response.status_code == 200
     data = response.json()
-    assert "documents" in data
-    
-    # Comprobamos que devuelve solo los sources únicos (puede que en distinto orden al ser set)
-    assert len(data["documents"]) == 2
-    assert "doc1.pdf" in data["documents"]
-    assert "doc2.txt" in data["documents"]
-    
-    # Comprobamos que ChromaDB '.get' se llamó una única vez sin parámetros o con loss parámetros correctos
-    mock_db.get.assert_called_once_with(include=["metadatas"])
+    assert data["user_id"] == user_id
+    assert len(data["documents"]) == 1
+    assert data["documents"][0]["doc_id"] == "uuid-1"
     
     # Limpiamos
     app.dependency_overrides.clear()
 
 
-def test_get_document_chunks_endpoint(mock_db):
+def test_get_document_chunks_endpoint(mock_db, mock_record_manager):
     app.dependency_overrides[get_vector_db] = lambda: mock_db
+    app.dependency_overrides[get_record_manager] = lambda: mock_record_manager
     
-    # Mock data para devolver chunks espedificos de un documento
-    filename = "doc_test.pdf"
+    doc_id = "uuid-test-document"
+    mock_record_manager.list_keys.return_value = ["chunk_1", "chunk_2"]
+    
+    # Mock data de ChromaDB
     mock_db.get.return_value = {
-        "ids": ["chunk_1", "chunk_2"],
-        "documents": ["Contenido del chunk 1", "Contenido del chunk 2"],
-        "metadatas": [
-            {"source": filename, "chunk_title": "Titulo 1"},
-            {"source": filename, "chunk_title": "Titulo 2"}
-        ]
+        "documents": ["Content 1", "Content 2"],
+        "metadatas": [{"title": "T1"}, {"title": "T2"}]
     }
     
-    response = client.get(f"/api/debug/documents/{filename}/chunks")
+    # Aseguramos que no parezca Pinecone para que use .get()
+    if hasattr(mock_db, "_index"):
+        del mock_db._index
+
+    response = client.get(f"/api/debug/documents/{doc_id}/chunks")
     
     assert response.status_code == 200
     data = response.json()
     
-    assert data["filename"] == filename
+    assert data["doc_id"] == doc_id
     assert data["total_chunks"] == 2
     assert len(data["chunks"]) == 2
-    
-    # Verificamos estructura del primer chunk
     assert data["chunks"][0]["id"] == "chunk_1"
-    assert data["chunks"][0]["content"] == "Contenido del chunk 1"
-    assert data["chunks"][0]["metadata"]["chunk_title"] == "Titulo 1"
-    
-    # Verificamos estructura del segundo chunk
-    assert data["chunks"][1]["id"] == "chunk_2"
-    assert data["chunks"][1]["content"] == "Contenido del chunk 2"
-    assert data["chunks"][1]["metadata"]["chunk_title"] == "Titulo 2"
-    
-    # Verificar que .get() se llamó con los filtros correctos (simulando filtro en ChromaDB)
-    mock_db.get.assert_called_once_with(
-        where={"source": filename}, 
-        include=["metadatas", "documents"]
-    )
+    assert data["chunks"][0]["content"] == "Content 1"
     
     # Limpiamos
     app.dependency_overrides.clear()

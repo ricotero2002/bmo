@@ -4,7 +4,7 @@ Un asistente personal de IA basado en la arquitectura **Self-RAG** (Retrieval-Au
 
 ## 🚀 Estado Actual del Proyecto
 
-Actualmente hemos **finalizado la Fase 5 (Cloud y Kubernetización)**. El sistema cuenta con una infraestructura robusta sobre Kubernetes (lista para OKE/Ampere A1), escalado inteligente **KEDA**, **Observabilidad** profesional (OpenTelemetry + Grafana Cloud) y automatización de imágenes ARM64. *Nota: El despliegue activo en el clúster cloud remoto ha quedado pospuesto como tarea pendiente.*
+Actualmente hemos **finalizado la Fase 5 (Cloud y Kubernetización)**. El sistema cuenta con una infraestructura robusta sobre Kubernetes (lista para OKE/Ampere A1), escalado inteligente **KEDA**, **Observabilidad** profesional (OpenTelemetry + Grafana Cloud) teniendo encuenta metricas, trazas y graficos. *Nota: El despliegue activo en el clúster cloud remoto ha quedado pospuesto como tarea pendiente.*
 
 **Hitos alcanzados (PreFase 5):**
 - **Orquestación K8s:** Despliegue de API, Workers y Consumidores en Kubernetes local.
