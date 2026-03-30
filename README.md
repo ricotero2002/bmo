@@ -4,7 +4,7 @@ Un asistente personal de IA basado en la arquitectura **Self-RAG** (Retrieval-Au
 
 ## 🚀 Estado Actual del Proyecto
 
-Actualmente hemos **finalizado la Fase 5 (Kubernetización Local y Observabilidad)**. El sistema ya cuenta con una infraestructura de microservicios robusta sobre **Kubernetes (k3d)**, escalado inteligente con **KEDA**, y un sistema de **Observabilidad** profesional (OpenTelemetry + Grafana Cloud). Además, el backend ya soporta **Streaming de Respuestas (SSE)**.
+Actualmente hemos **finalizado la Fase 5 (Cloud y Kubernetización)**. El sistema cuenta con una infraestructura robusta sobre Kubernetes (lista para OKE/Ampere A1), escalado inteligente **KEDA**, **Observabilidad** profesional (OpenTelemetry + Grafana Cloud) teniendo encuenta metricas, trazas y graficos. *Nota: El despliegue activo en el clúster cloud remoto ha quedado pospuesto como tarea pendiente.*
 
 **Hitos alcanzados (PreFase 5):**
 - **Orquestación K8s:** Despliegue de API, Workers y Consumidores en Kubernetes local.
@@ -24,12 +24,14 @@ Actualmente hemos **finalizado la Fase 5 (Kubernetización Local y Observabilida
 *   ✅ **Fase 3: Ingesta Robusta de Datos (Kafka & MinIO)** (¡Completada!)
 *   ✅ **Fase 4: Orquestación Agéntica y Persistencia** (¡Completada!)
 *   ✅ **PreFase 5: Kubernetización Local y Observabilidad** (¡Completada!)
-*   ⏳ **Fase 5: Despliegue en la Nube (OCI/AWS) y Usuarios** (En Progreso)
-    *   Migración de k3d a OKE (Oracle)/EKS (AWS). Gestión de sesiones de usuario y persistencia cloud-native.
-*   ⏳ **Fase 6: Frontend, Usuarios y Seguridad** (Pendiente)
-    *   Interfaz moderna (Next.js), Streaming UI, Gestión de Sesiones y Autenticación.
-*   ⏳ **Fase 7: GraphRAG y Grafos de Conocimiento** (Pendiente)
-    *   Neo4j para descubrimiento de relaciones complejas.
+*   ✅ **Fase 5: Despliegue en la Nube (OCI/AWS)** (¡Completada!)
+    *   *Nota: Se implementó la configuración y CI/CD para despliegue remoto. El despliegue real en el clúster remoto de Kubernetes queda pendiente.*
+*   ⏳ **Fase 6: Frontend Ligero** (Pendiente)
+    *   Interfaz moderna básica (Next.js) y Streaming UI. (Sin sistema de gestión de usuarios completo).
+*   ⏳ **Fase 7: Testing, Optimización y Análisis** (Pendiente)
+    *   Optimización de parámetros del agente, pruebas anti-alucinaciones, análisis de latencias, costos (LLMs y Cloud), y rendimiento de recursos (Kubernetes local vs remoto).
+*   ⏳ **Fase 8: Tareas Pendientes y Mejoras Futuras** (Pendiente)
+    *   Todo lo descartado o pospuesto (ej. Despliegue remoto K8s final, Gestión de Usuarios, GraphRAG con Neo4j).
 
 ---
 
@@ -124,3 +126,9 @@ Luego de esto, puedes usar las colecciones provistas en `/postman` para interact
 ```bash
 python -m pytest src/tests/
 ```
+
+Acordarme los secretos de infisical, y el de ca de kafka.
+
+kubectl create secret generic kafka-ca-cert \
+  --from-file=ca.pem=./ca.pem \
+  -n personal-ai

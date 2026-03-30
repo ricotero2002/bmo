@@ -175,8 +175,11 @@ class ChunkingService:
         
         chunks = self.router.route_and_split(llm_factory, text, filename)
         
-        for chunk in chunks:
+        for i, chunk in enumerate(chunks):
             base_meta = original_document.metadata.copy()
+            # Si el splitter no puso índice, lo ponemos nosotros secuencialmente
+            if "chunk_index" not in chunk.metadata or chunk.metadata["chunk_index"] is None:
+                chunk.metadata["chunk_index"] = i
             base_meta.update(chunk.metadata)
             chunk.metadata = base_meta
             

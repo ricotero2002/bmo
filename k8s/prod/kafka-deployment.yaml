@@ -1,0 +1,63 @@
+# k8s/prod/kafka-deployment.yaml
+# Deployment del consumidor Kafka para Aiven (producci\u00f3n cloud)
+# KEDA escala este deployment segun el consumer lag en el topic raw-documents
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-consumer-deployment
+  namespace: personal-ai
+spec:
+  replicas: 1  # KEDA lo manejará vía KafkaTrigger
+  selector:
+    matchLabels:
+      app: kafka-consumer
+  template:
+    metadata:
+      labels:
+        app: kafka-consumer
+    spec:
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
+      containers:
+      - name: kafka-consumer
+        image: personal_ai_worker:latest
+        imagePullPolicy: Never
+        command: ["python", "-m", "src.workers.kafka_consumer"]
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "1Gi"
+        envFrom:
+        - secretRef:
+            name: app-secrets
+        - configMapRef:
+            name: app-config
+        env:
+          # --- AGREGAR ESTO PARA KEDA ---
+          - name: KAFKA_BOOTSTRAP_SERVERS
+            valueFrom:
+              secretKeyRef:
+                name: app-secrets
+                key: KAFKA_BOOTSTRAP_SERVERS
+          # ------------------------------
+          - name: OTEL_SERVICE_NAME
+            value: "kafka-consumer"
+          - name: PYTHONUNBUFFERED
+            value: "1"
+          - name: KAFKA_GROUP_ID
+            value: "document-ingestor-v3"
+          - name: KAFKA_SSL_CA_LOCATION
+            value: "/etc/kafka/certs/ca.pem"  # montado desde kafka-ca-cert secret
+        volumeMounts:
+        - name: kafka-ca-cert
+          mountPath: /etc/kafka/certs
+          readOnly: true
+      volumes:
+      - name: kafka-ca-cert
+        secret:
+          secretName: kafka-ca-cert  # kubectl create secret generic kafka-ca-cert --from-file=ca.pem=./ca.pem -n personal-ai

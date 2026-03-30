@@ -18,7 +18,6 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     
     # RabbitMQ / Celery
-    RABBITMQ_URL: str = "pyamqp://guest@localhost//"
     CELERY_BROKER_URL: str = "pyamqp://guest@localhost//"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/0"
     

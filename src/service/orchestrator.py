@@ -52,13 +52,27 @@ class IngestionOrchestrator:
             # Calcular hash del contenido para deduplicación
             file_hash = hashlib.sha256(content).hexdigest() if content else None
 
-            # Si el hash ya existe, el archivo no cambió → skip
+            # --- Deduplicación idempotente por hash ---
+            # Estados exitosos/en progreso → skip (ya existe o está siendo procesado)
+            # Estado 'failed' → reusar el doc_id y reintentar (el archivo no cambió, solo falló el dispatch)
+            RETRIABLE_STATUSES = {"failed", "dead", "deleted"}
+            SKIP_STATUSES = {"queued", "processing", "succeeded"}
+
             if file_hash:
                 existing = self.status_provider.get_job_by_hash(file_hash, user_id)
                 if existing:
-                    return {"status": "already_exists", "doc_id": str(existing["doc_id"])}
+                    existing_status = existing.get("status", "")
+                    if existing_status in SKIP_STATUSES:
+                        return {"status": "already_exists", "doc_id": str(existing["doc_id"])}
+                    elif existing_status in RETRIABLE_STATUSES:
+                        # Reusar el mismo doc_id → consistencia en DB y Storage
+                        logger.info(
+                            f"Job previo {existing['doc_id']} en estado '{existing_status}'. "
+                            "Reintentando con el mismo doc_id."
+                        )
+                        doc_id = existing["doc_id"]
 
-            # 1. Crear registro inicial
+            # 1. Crear/actualizar registro inicial (idempotente si doc_id ya existe)
             job_metadata = {
                 "filename": filename,
                 "user_id": user_id,
@@ -66,7 +80,7 @@ class IngestionOrchestrator:
             }
             if metadata:
                 job_metadata.update(metadata)
-                
+
             self.status_provider.create_job(
                 doc_id=doc_id,
                 user_id=user_id,
@@ -74,31 +88,43 @@ class IngestionOrchestrator:
                 file_hash=file_hash,
                 metadata=job_metadata
             )
-            
+
             # 2. Definir object_name si no viene
             if not object_name:
                 object_name = f"{user_id}/{doc_id}" if user_id else str(doc_id)
-            
+
             # 3. Subir a Storage si tenemos el contenido (bytes)
+
+
             if content:
-                file_stream = io.BytesIO(content)
-                self.storage_provider.upload_file(file_stream, object_name=object_name)
-            
+                # Ya tenemos los bytes en 'content', no hace falta envolverlos en stream ni leerlos de nuevo
+                self.storage_provider.upload_file(content, object_name=object_name)
+
             # 4. Marcar como queued
             self.status_provider.update_status(doc_id, "queued")
-            
+
             # 5. Delegar al worker
-            task = process_document_task.apply_async(
-                kwargs={
-                    "doc_id": str(doc_id),
-                    "filename": filename,
-                    "user_id": user_id,
-                    "object_name": object_name
-                },
-                task_id=str(doc_id),
-                queue="ingest_q"
-            )
-            
+            # Compensating transaction: si apply_async falla, marcamos 'failed'
+            # para que el próximo re-upload del mismo archivo pueda reintentar.
+            try:
+                task = process_document_task.apply_async(
+                    kwargs={
+                        "doc_id": str(doc_id),
+                        "filename": filename,
+                        "user_id": user_id,
+                        "object_name": object_name
+                    },
+                    task_id=str(doc_id),
+                    queue="ingest_q"
+                )
+            except Exception as dispatch_err:
+                logger.error(
+                    f"apply_async falló para {doc_id}: {dispatch_err}. "
+                    "Marcando como 'failed' para habilitar reintento en próxima subida."
+                )
+                self.status_provider.update_status(doc_id, "failed", error_msg=str(dispatch_err))
+                raise
+
             # Sumamos 1 al contador de éxito (intento de ingesta encolado)
             from src.core.telemetry import metrics_registry
             metrics_registry.docs_processed.add(1, {"status": "queued", "file_type": filename.split('.')[-1] if '.' in filename else "unknown"})

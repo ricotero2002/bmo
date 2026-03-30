@@ -1,0 +1,114 @@
+mode: deployment
+
+image:
+  repository: "otel/opentelemetry-collector-contrib"
+
+resources:
+  limits:
+    cpu: "250m"
+    memory: "512Mi"
+  requests:
+    cpu: "100m"
+    memory: "256Mi"
+
+config:
+  extensions:
+    health_check: {}
+    basicauth/grafana:
+      client_auth:
+        username: "${env:GRAFANA_USERNAME}"
+        password: "${env:GRAFANA_TOKEN}"
+
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+          
+    # ─── Novedad: Kubelet Stats (Métricas de Infraestructura) ───
+    kubeletstats:
+      collection_interval: 10s
+      auth_type: "serviceAccount"
+      endpoint: "https://${env:KUBERNETES_SERVICE_HOST}:${env:KUBERNETES_SERVICE_PORT}"
+      insecure_skip_verify: true
+      extra_metadata_labels:
+        - container.id
+        - k8s.volume.type
+
+    # ─── Mantenemos el scrapeo de Prometheus (Para Celery Exporter) ───
+    prometheus:
+      config:
+        scrape_configs:
+          - job_name: 'kubernetes-pods'
+            kubernetes_sd_configs:
+              - role: pod
+            relabel_configs:
+              - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                action: keep
+                regex: true
+              - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+                action: replace
+                target_label: __address__
+                regex: ([^:]+)(?::\d+)?;(\d+)
+                replacement: $1:$2
+              - source_labels: [__meta_kubernetes_namespace]
+                action: replace
+                target_label: kubernetes_namespace
+              - source_labels: [__meta_kubernetes_pod_name]
+                action: replace
+                target_label: kubernetes_pod_name
+
+  processors:
+    batch:
+      send_batch_size: 8192
+      timeout: 1s
+    memory_limiter:
+      check_interval: 1s
+      limit_mib: 150
+      spike_limit_mib: 50
+    # ─── Novedad: Resource Processor (Inyecta nombre de cluster) ───
+    resource:
+      attributes:
+        - key: cluster.name
+          value: "personal-ai-cluster"
+          action: insert
+
+  exporters:
+    debug:
+      verbosity: normal # 'basic' para solo headers, 'normal' para ver datos, 'detailed' para ver TODO
+    otlp_http:
+      endpoint: "https://otlp-gateway-prod-us-east-2.grafana.net/otlp" 
+      auth:
+        authenticator: basicauth/grafana
+
+  service:
+    extensions: [health_check, basicauth/grafana]
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [otlp_http, debug] # <-- Añadimos debug
+      metrics:
+        # Añadimos kubeletstats a la tubería de métricas
+        receivers: [otlp, prometheus, kubeletstats]
+        processors: [memory_limiter, resource, batch]
+        exporters: [otlp_http, debug] # <-- Añadimos debug
+      # ─── Logs Pipeline (Opcional, pero recomendado) ───
+      logs:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [otlp_http, debug] # <-- Añadimos debug
+
+extraEnvs:
+  - name: GRAFANA_USERNAME
+    valueFrom:
+      secretKeyRef:
+        name: app-secrets
+        key: GRAFANA_USERNAME
+  - name: GRAFANA_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: app-secrets
+        key: GRAFANA_TOKEN

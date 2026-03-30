@@ -85,6 +85,17 @@ docker build --target final-worker -t personal_ai_worker:latest -f docker/Docker
 k3d image import personal_ai_api:latest -c mycluster
 k3d image import personal_ai_worker:latest -c mycluster
 
+k3d image import personal_ai_api:latest personal_ai_worker:latest -c mycluster
+
+kubectl rollout restart deployment -n personal-ai
+
+kubectl rollout restart deployment/api-deployment -n personal-ai
+
+kubectl rollout restart deployment otel-collector-opentelemetry-collector -n observability
+
+
+helm upgrade --install otel-collector open-telemetry/opentelemetry-collector -f k8s/otel-collector-values.yaml -n observability
+
 ### PASO 5: Verificar pods
 
 ```powershell
@@ -97,6 +108,9 @@ kubectl logs -n personal-ai -l app=api --follow
 # Ver logs del Worker
 kubectl logs -n personal-ai -l app=worker --follow
 ```
+kubectl get pods -n observability -w
+
+
 
 ### PASO 6: Verificar acceso a la API
 
@@ -115,6 +129,8 @@ kubectl describe pod -n personal-ai <nombre-del-pod>
 
 # Ver estado del auto-escalado de KEDA
 kubectl get scaledobject -n personal-ai
+
+kubectl logs keda-operator-687fb5779d-9lbnz -n keda | findstr kafka-consumer-scaler
 
 # Verificar secretos sincronizados por Infisical
 kubectl get secrets -n personal-ai
@@ -452,3 +468,16 @@ kubectl delete scaledobject kafka-consumer-scaler -n personal-ai; kubectl get sc
 kubectl rollout restart deployment kafka-consumer-deployment -n personal-ai
 kubectl rollout restart deployment api-deployment -n personal-ai
 kubectl rollout restart deployment worker-deployment -n personal-ai
+
+Acordarme los secretos de infisical, y el de ca de kafka.
+
+kubectl create secret generic kafka-ca-cert \
+  --from-file=ca.pem=./ca.pem \
+  -n personal-ai
+
+
+kubectl create secret generic infisical-auth-secret `
+  --from-literal=clientId="TU_CLIENT_ID_REAL" `
+  --from-literal=clientSecret="TU_CLIENT_SECRET_REAL" `
+  --namespace personal-ai `
+  --dry-run=client -o yaml | kubectl apply -f -

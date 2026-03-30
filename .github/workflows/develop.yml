@@ -30,7 +30,7 @@ jobs:
         pip install -r requirements/local.txt
     
     # Nota: Testcontainers levantará Docker por su cuenta en background
-    - name: Run Unit and Integration Tests
+    - name: Run Unit
       env:
         # Variables fakes que necesitan los clientes para instanciarse (aunque el factory esté mockeado)
         GOOGLE_API_KEY: "fake_google_key"
@@ -47,3 +47,54 @@ jobs:
         USE_CLOUD_STORAGE: "True"
       run: |
         pytest src/tests/agente/ -v
+
+  # ─── Conectividad con servicios cloud administrados ───────────────────────
+  # Este job corre en paralelo con "test" y solo se activa cuando los GitHub
+  # Secrets están configurados (forks y PRs externos lo saltean silenciosamente).
+  # Requiere que mTLS esté DESACTIVADO en Oracle ADB para conectarse sin wallet.
+  cloud-connectivity:
+    runs-on: ubuntu-latest
+    # Este job siempre corre, pero los tests individuales se saltean automáticamente
+    # (via @pytest.mark.skipif) si sus variables de entorno no están configuradas.
+    # En forks o PRs sin secrets, todos los tests se marcan como SKIPPED (no FAILED).
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements/local.txt
+        # Dependencias adicionales para cloud connectivity
+        pip install oracledb pinecone-client langchain-pinecone pika redis
+
+    - name: Run cloud connectivity tests
+      env:
+        INTEGRATION_ENV: "cloud"
+        # Oracle Autonomous Database
+        DB_HOST: ${{ secrets.DB_HOST }}
+        DB_USER: ${{ secrets.DB_USER }}
+        DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        DB_SERVICE_NAME: ${{ secrets.DB_SERVICE_NAME }}
+        DB_PORT: "1521"
+        # Pinecone
+        PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+        PINECONE_INDEX_NAME: ${{ secrets.PINECONE_INDEX_NAME }}
+        # RabbitMQ / CloudAMQP
+        CELERY_BROKER_URL: ${{ secrets.CELERY_BROKER_URL }}
+        # Redis / Upstash
+        REDIS_URL: ${{ secrets.REDIS_URL }}
+        # Oracle Object Storage
+        OCI_ACCESS_KEY: ${{ secrets.OCI_ACCESS_KEY }}
+        OCI_SECRET_KEY: ${{ secrets.OCI_SECRET_KEY }}
+        OCI_NAMESPACE: ${{ secrets.OCI_NAMESPACE }}
+        OCI_REGION: ${{ secrets.OCI_REGION }}
+        OCI_BUCKET_NAME: ${{ secrets.OCI_BUCKET_NAME }}
+      run: |
+        pytest src/tests/integration/test_cloud_connections.py -v --tb=short

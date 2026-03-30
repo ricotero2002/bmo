@@ -1,7 +1,7 @@
 import os
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from src.providers.vector_store.chroma_provider import ChromaProvider
-from src.providers.vector_store.opensearch_provider import OpenSearchProvider
+from src.providers.vector_store.pinecone_provider import PineconeProvider
 
 
 class VectorStoreFactory:
@@ -15,10 +15,10 @@ class VectorStoreFactory:
         embeddings = VectorStoreFactory.get_embeddings()
 
         if env == "production":
-            return OpenSearchProvider(
-                endpoint=os.getenv("AWS_OPENSEARCH_URL"),
+            # Producción: Pinecone Starter (Always Free)
+            return PineconeProvider(
                 embeddings=embeddings,
-                index_name=os.getenv("AWS_OPENSEARCH_INDEX", "bmo-documents"),
+                index_name=os.getenv("PINECONE_INDEX_NAME", "bmo-documents"),
             )
 
         # Default: desarrollo local (ChromaDB en Docker)

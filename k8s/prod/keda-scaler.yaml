@@ -1,0 +1,78 @@
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: keda-rabbitmq-auth
+  namespace: personal-ai
+spec:
+  secretTargetRef:
+  - parameter: host
+    name: app-secrets
+    key: CELERY_BROKER_URL
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: celery-worker-scaler
+  namespace: personal-ai
+spec:
+  scaleTargetRef:
+    name: worker-deployment
+  minReplicaCount: 0
+  maxReplicaCount: 2
+  triggers:
+  - type: rabbitmq
+    metadata:
+      queueName: ingest_q
+      queueLength: "5"
+    authenticationRef:
+      name: keda-rabbitmq-auth
+
+---
+# ─── KEDA — Kafka Consumer Autoscaler (Aiven) ────────────────────────────────
+# Escala kafka-consumer-deployment según el consumer lag del topic raw-documents.
+# lag threshold = 5 significa: por cada 5 mensajes pendientes → 1 replica adicional
+
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: keda-kafka-auth
+  namespace: personal-ai
+spec:
+  secretTargetRef:
+  - parameter: username
+    name: app-secrets
+    key: KAFKA_SASL_USERNAME     # usuario de Aiven
+  - parameter: password
+    name: app-secrets
+    key: KAFKA_SASL_PASSWORD     # usuario de Aiven
+  - parameter: ca
+    name: kafka-ca-cert
+    key: ca.pem                  # certificado CA de Aiven
+
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: kafka-consumer-scaler
+  namespace: personal-ai
+spec:
+  scaleTargetRef:
+    name: kafka-consumer-deployment
+  minReplicaCount: 0      # escala a 0 si no hay mensajes
+  maxReplicaCount: 2      # máximo 5 replicas
+  pollingInterval: 15     # chequear lag cada 15s
+  cooldownPeriod: 60      # esperar 60s antes de escalar a 0
+  triggers:
+  - type: apache-kafka    # <-- CAMBIO A SCALER EXPERIMENTAL
+    metadata:
+      # KEDA va a buscar esta variable en el bloque `env` de tu deployment
+      bootstrapServersFromEnv: "KAFKA_BOOTSTRAP_SERVERS"
+      consumerGroup: "document-ingestor-v3"
+      topic: "raw-documents"
+      lagThreshold: "5"
+      offsetResetPolicy: "earliest"  # <-- VITAL PARA QUE ESCALE A CERO
+      sasl: "scram_sha256"
+      tls: "enable"
+      allowInsecureSkipVerify: "true" # <-- EVITA EL ERROR DE CERTIFICADO (Aiven)
+    authenticationRef:
+      name: keda-kafka-auth
