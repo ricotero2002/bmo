@@ -98,7 +98,7 @@ def knowledge_base_retriever(
     try:
         docs = _vector_store.similarity_search(
             query,
-            k=6,
+            k=3,
             filter=metadata_filter,
         )
         logger.info(

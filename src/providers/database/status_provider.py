@@ -7,37 +7,11 @@ from src.providers.database.models import Base, IngestionJob
 import uuid
 
 
+from src.providers.database.core import get_engine
+
 class StatusProvider:
     def __init__(self):
-        # Oracle Autonomous DB (Always Free) — conexión TLS sin wallet
-        user = os.getenv("DB_USER")
-        password = os.getenv("DB_PASSWORD")
-        dsn = os.getenv("DB_DSN")
-
-        ssl_ctx = ssl.create_default_context()
-        
-        # Todo lo que pongas aquí se le pasa directo por debajo a oracledb.connect()
-        connect_args = {"ssl_context": ssl_ctx}
-
-        if dsn:
-            # Si hay DSN, lo pasamos como argumento en lugar de ensuciar la URL
-            db_url = f"oracle+oracledb://{user}:{password}@"
-            connect_args["dsn"] = dsn
-        else:
-            host = os.getenv("DB_HOST")
-            port = os.getenv("DB_PORT", "1521")
-            service_name = os.getenv("DB_SERVICE_NAME")
-            db_url = f"oracle+oracledb://{user}:{password}@{host}:{port}/?service_name={service_name}"
-            # TRUCO VITAL: Le exigimos a SQLAlchemy que use TCPS
-            connect_args["protocol"] = "tcps"
-
-        self.engine = create_engine(
-            db_url,
-            echo=False,
-            connect_args=connect_args,
-            pool_timeout=10,
-            pool_pre_ping=True
-        )
+        self.engine = get_engine()
         self.Session = sessionmaker(bind=self.engine)
         self._ensure_table_exists()
 

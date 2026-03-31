@@ -68,4 +68,21 @@ class IngestionJob(Base):
     updated_at    = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     file_hash     = Column(String(256), nullable=True, index=True)
 
+class Chat(Base):
+    __tablename__ = "chats"
 
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
+    user_id = Column(String(255), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
+    chat_id = Column(GUID, nullable=False, index=True)
+    role = Column(String(50), nullable=False)  # 'user' or 'assistant'
+    content = Column(Text, nullable=False)
+    parts = Column(JSONText, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

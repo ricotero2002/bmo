@@ -21,6 +21,7 @@ from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from prometheus_fastapi_instrumentator import Instrumentator
 import os
 
 @asynccontextmanager
@@ -48,6 +49,9 @@ async def lifespan(app: FastAPI):
         app.state.status_provider = StatusProvider()
         app.state.storage_provider = StorageFactory.get_storage()
         
+        from src.providers.database.chat_provider import ChatProvider
+        app.state.chat_provider = ChatProvider()
+        
         yield
         # Shutdown: al salir del with, el checkpointer cierra su pool correctamente
 
@@ -72,6 +76,9 @@ if otel_endpoint:
     from opentelemetry.instrumentation.celery import CeleryInstrumentor
     FastAPIInstrumentor.instrument_app(app)
     CeleryInstrumentor().instrument()  # Sella los mensajes hacia Celery con el Trace ID
+
+# 3. Métricas para Prometheus (Endpoint /metrics)
+Instrumentator().instrument(app).expose(app)
 
 app.add_middleware(
     CORSMiddleware,

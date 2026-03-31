@@ -5,7 +5,8 @@ export type MyUIMessage = UIMessage<
     never, // metadata type
     {
         status: {
-            message: string;
+            message?: string;
+            thread_id?: string;
         };
     } // data parts type
 >;
