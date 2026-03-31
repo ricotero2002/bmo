@@ -9,7 +9,7 @@ def mock_session():
 
 @pytest.fixture
 def status_provider(mock_session):
-    with patch("src.providers.database.status_provider.create_engine"), \
+    with patch("src.providers.database.status_provider.get_engine"), \
          patch("src.providers.database.status_provider.sessionmaker") as mock_sm:
         mock_sm.return_value = lambda: mock_session
         provider = StatusProvider()
