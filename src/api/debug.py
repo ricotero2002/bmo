@@ -64,15 +64,25 @@ async def get_document_chunks(
         # El método fetch permite traer los vectores por ID
         if hasattr(db, "_index"):
             response = db._index.fetch(ids=pinecone_ids)
-            vectors = response.get("vectors", {})
             
+            # Pinecone SDK devuelve un objeto FetchResponse, no un dict.
+            # Accedemos a .vectors que es un dict {id: Vector}
+            vectors = getattr(response, "vectors", {})
+            if not vectors and isinstance(response, dict):
+                vectors = response.get("vectors", {})
+
             for p_id in pinecone_ids:
                 vector_data = vectors.get(p_id)
                 if vector_data:
+                    # vector_data suele ser un objeto con atributo .metadata
+                    metadata = getattr(vector_data, "metadata", {})
+                    if not metadata and isinstance(vector_data, dict):
+                        metadata = vector_data.get("metadata", {})
+                        
                     chunks.append({
                         "id": p_id,
-                        "content": vector_data.get("metadata", {}).get("text", "[Contenido no disponible en metadata]"),
-                        "metadata": vector_data.get("metadata", {})
+                        "content": metadata.get("text") or metadata.get("page_content") or "[Contenido no disponible en metadata]",
+                        "metadata": metadata
                     })
         else:
             # Fallback si no es Pinecone (ej. Chroma local que SI tiene .get)

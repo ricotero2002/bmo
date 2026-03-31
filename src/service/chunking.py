@@ -13,6 +13,7 @@ from src.core.prompts import (
 )
 from src.schemas.metadata import DocumentMetadataExtraction
 from datetime import datetime, timezone
+from langsmith import tracing_context
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,8 @@ class AgenticChunker:
     def _get_propositions(self, text: str) -> List[str]:
         messages = PROPOSITIONS_PROMPT.format_messages(input=text)
         try:
-            result = self.sentences_agent.invoke(messages)
+            with tracing_context(enabled=False):
+                result = self.sentences_agent.invoke(messages, config={"callbacks": []})
             if result and result.sentences:
                 return result.sentences
         except Exception as e:
@@ -90,7 +92,8 @@ class AgenticChunker:
             proposition="\n".join(chunk['propositions']),
             current_summary=chunk['summary']
         )
-        res = self.plain_agent.invoke(messages)
+        with tracing_context(enabled=False):
+            res = self.plain_agent.invoke(messages, config={"callbacks": []})
         return res.content
     
     def _update_chunk_title(self, chunk) -> str:
@@ -99,17 +102,20 @@ class AgenticChunker:
             current_summary=chunk['summary'],
             current_title=chunk['title']
         )
-        res = self.plain_agent.invoke(messages)
+        with tracing_context(enabled=False):
+            res = self.plain_agent.invoke(messages, config={"callbacks": []})
         return res.content
 
     def _get_new_chunk_summary(self, proposition) -> str:
         messages = NEW_CHUNK_SUMMARY_PROMPT.format_messages(proposition=proposition)
-        res = self.plain_agent.invoke(messages)
+        with tracing_context(enabled=False):
+            res = self.plain_agent.invoke(messages, config={"callbacks": []})
         return res.content
     
     def _get_new_chunk_title(self, summary) -> str:
         messages = NEW_CHUNK_TITLE_PROMPT.format_messages(summary=summary)
-        res = self.plain_agent.invoke(messages)
+        with tracing_context(enabled=False):
+            res = self.plain_agent.invoke(messages, config={"callbacks": []})
         return res.content
 
     def _create_new_chunk(self, proposition):
@@ -139,7 +145,8 @@ class AgenticChunker:
         )
 
         try:
-            result = self.chunk_id_agent.invoke(messages)
+            with tracing_context(enabled=False):
+                result = self.chunk_id_agent.invoke(messages, config={"callbacks": []})
             if result and result.chunk_id:
                 chunk_found = result.chunk_id
                 if len(chunk_found) == self.id_truncate_limit and chunk_found in self.chunks:
@@ -166,9 +173,7 @@ class GlobalSummarizer:
 class ChunkingRouter:
     @staticmethod
     def _is_structured_or_long(text: str, filename: str) -> bool:
-        if len(text) > 3000: return True
         if filename.endswith(".pdf") or filename.endswith(".docx"): return True
-        if "# " in text or "## " in text: return True
         return False
 
 class ChunkingService:
@@ -184,7 +189,7 @@ class ChunkingService:
         global_context = summarizer.analyze(text)
         
         # 2. Ruteo
-        if len(text) > 30000:
+        if len(text) > 20000:
             logger.info("Documento muy grande (> 30000 chars), forzando MarkdownTextSplitter")
             use_agentic = False
         elif global_context:
