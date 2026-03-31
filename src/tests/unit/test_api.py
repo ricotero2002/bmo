@@ -116,7 +116,7 @@ def test_query_rag(mock_embeddings, mock_vector_db):
     assert "Contexto simulado" in data["context"][0]
 
     # The endpoint passes filter=None when user_id is not provided
-    mock_vector_db.similarity_search.assert_called_once_with("¿Qué es RAG?", k=6, filter=None)
+    mock_vector_db.similarity_search.assert_called_once_with("¿Qué es RAG?", k=3, filter=None)
 
     app.dependency_overrides = {}
 

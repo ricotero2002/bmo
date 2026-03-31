@@ -78,7 +78,7 @@ async def test_agent_rag_quality(test_data):
     # Dependiendo de cómo devuelve tu agent_service, extraemos el contenido.
     # El método chat de tu Agente devuelve generada como un objeto AIMessage
     generated_msg_v1 = result_v1.get("generated")
-    response_v1 = generated_msg_v1.content if generated_msg_v1 else result_v1["messages"][-1].content
+    response_v1 = generated_msg_v1.content if generated_msg_v1 else result_v1["messages"][-2].content
     
     test_case_v1 = LLMTestCase(
         input=test_data["input"],
@@ -109,7 +109,7 @@ async def test_agent_rag_quality(test_data):
     )
     
     generated_msg_v2 = result_v2.get("generated")
-    response_v2 = generated_msg_v2.content if generated_msg_v2 else result_v2["messages"][-1].content
+    response_v2 = generated_msg_v2.content if generated_msg_v2 else result_v2["messages"][-2].content
 
 
     test_case_v2 = LLMTestCase(
