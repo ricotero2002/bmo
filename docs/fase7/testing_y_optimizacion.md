@@ -1,4 +1,6 @@
 # Fase 7: Testing, Optimización y Análisis
+Tengo que probar si funciona bien el resumen ahora.
+
 
 Esta fase está dedicada a asegurar que el asistente y su integración con Kubernetes sean rápidos, económicos, certeros y escalables antes de dar por finalizado el núcleo del proyecto. 
 
@@ -33,3 +35,20 @@ A continuación se detalla todo el espectro de pruebas, mediciones y optimizacio
 * **Búsqueda en Internet (Web Search):** Evaluar darle al agente una herramienta extra (Tavily/DuckDuckGo) para que busque en la web abierta cuando no encuentre respuestas en tus notas locales.
 * **Optimización de Prompts:** Reducir la longitud del *System Prompt* base sin perder la caracterización del asistente, ahorrando así tokens en el historial.
 * **Re-Ranking de Contexto:** Explorar modelos de reranking (como Cohere) para perfilar aún más los chunks que recibe el LLM luego de la búsqueda vectorial.
+
+
+
+Algunas cosas a mejorar pueden ser el tema de:
+Hacer que si tiene que buscar entre muchos chunks (ponele un libro) pueda pedir mas chunks o chunks adyacentes.
+
+muchas pruebas, pedirle muchos documentos a gemini (con diferetnes fechas despues ver como hacer esto) subirlos y hacer pytest haciendo que busque lo mas importante.
+
+Poder incluir en tipo los Golden data sets, que el usuario puede indicar che esto está mal así después se analiza y añade corregido, y human in the loop
+
+En el chunking aprovechando que hago chunking agentic que lo que resume de cada parrafo lo ponga en los chunking junto al  contexto, asi por ejemplo (y tabmbien viendo el titulo), asi si por ejemplo es una reunion anota de reunion tanto asi al hacer busqueadas puede encontrarlo o un metadato con contexto sobre que trata, el tema que tengo que ver con documentos ocmpletos, capas usando los primeros chunks como contexto.
+
+Permitir preguntas complejas como busca estas notas, despues segun los freworks o cosas que tengo que hacer (como un proyecto de x) busca en internet sobre esos y haceme una planificacion mediana de que hacer con todo eso.
+
+Permitir que el agente luego escriba o guarde documentos sobre cosas hablandas para poder recuperarlas luego.
+
+Hacer si o si el pipeline de obtener documentos de una carpeta o de un drive.

@@ -1,13 +1,14 @@
-from fastapi import APIRouter, UploadFile, File, Depends
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from fastapi.responses import StreamingResponse, JSONResponse
 from src.schemas.fastapi import QueryRequest, QueryResponse, AskRequest, DeleteRequest
 from src.api.dependencies import *
 from celery.result import AsyncResult
 from src.workers.celery_app import celery_app
 import uuid
 from typing import Optional, List
-from fastapi.responses import StreamingResponse
+from starlette.background import BackgroundTask
 import json
-
+import asyncio
 
 #ver como exportar el router para main
 router = APIRouter()
@@ -140,7 +141,7 @@ async def query_rag(
         
     results = db.similarity_search(
         request.query, 
-        k=6,
+        k=3,
         filter=filter_opts if filter_opts else None
     )
     
@@ -156,58 +157,115 @@ async def ask_agent(
     agent_service = Depends(get_agent_service)
 ):
     try:
-        # Llamamos al agente inyectándole el thread_id para continuar la charla en la DB
-        # El user_id se puede pasar en user_info o como campo directo para filtrado RAG interno
+        # Si thread_id está vacío, creamos una nueva conversación
+        thread_id = request.thread_id or str(uuid.uuid4())
         user_context = request.user_info or {}
             
         result = await agent_service.chat(
             message=request.message, 
-            thread_id=request.thread_id,
+            thread_id=thread_id,
             user_info=user_context,
             prompt_version=request.prompt_version
         )
-        # Extraer el contenido generado para no devolver el resúmen del sistema
-        generated_msg = result.get("generated")
-        last_message = generated_msg.content if generated_msg else result["messages"][-1].content
-        return {
-            "response": last_message,
-            "thread_id": request.thread_id
-        }
+        # Obtener el último mensaje de IA
+        messages = result.get("messages", [])
+        last_message = ""
+        for msg in reversed(messages):
+            if isinstance(msg, AIMessage) or (hasattr(msg, "type") and msg.type == "ai"):
+                last_message = msg.content
+                break
+        
+        # Si no se encontró AIMessage, usar el último mensaje en general
+        if not last_message and messages:
+            last_message = messages[-1].content
+        return JSONResponse(
+            content={
+                "response": last_message,
+                "thread_id": thread_id
+            },
+            headers={"X-Thread-ID": thread_id}
+        )
     except Exception as e:
         return {"error": str(e), "status_code": 500}
 
 
 
+@router.get("/chats")
+async def get_chats(
+    user_id: str,
+    chat_provider = Depends(get_chat_provider)
+):
+    """
+    Obtiene la lista de conversaciones (hilos) para un usuario.
+    """
+    try:
+        chats = chat_provider.get_user_chats(user_id)
+        return {"chats": chats}
+    except Exception as e:
+        return {"error": str(e), "status_code": 500}
+
+@router.get("/chats/{thread_id}/messages")
+async def get_messages(
+    thread_id: str,
+    chat_provider = Depends(get_chat_provider)
+):
+    """
+    Obtiene todos los mensajes de un hilo específico.
+    """
+    try:
+        thread_uuid = uuid.UUID(thread_id)
+        messages = chat_provider.get_chat_messages(thread_uuid)
+        return {"messages": messages}
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid thread_id format")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/ask/stream")
 async def ask_agent_stream(
     request: AskRequest,
-    agent_service = Depends(get_agent_service)
+    agent_service = Depends(get_agent_service),
+    chat_provider = Depends(get_chat_provider)
 ):
     """
     Endpoint de streaming. Emite estados (status) y tokens (text) en tiempo real
-    usando Server-Sent Events (SSE).
+    usando Server-Sent Events (SSE). Guarda la conversión en la BD de forma asíncrona.
     """
+    thread_id = request.thread_id or str(uuid.uuid4())
+    full_response_text = []
+
     async def event_generator():
+        # Informar al frontend de inmediato el ID del thread por si fue generado nuevo
+        yield f"data: {json.dumps({'type': 'thread_id', 'content': thread_id})}\n\n"
+        
         try:
             user_context = request.user_info or {}
             
             # Llamamos al nuevo método asíncrono que creamos en agent.py
             async for event in agent_service.astream_chat(
                 message=request.message, 
-                thread_id=request.thread_id,
+                thread_id=thread_id,
                 user_info=user_context,
                 prompt_version=request.prompt_version
             ):
                 kind = event["event"]
+                tags = event.get("tags", [])
+                
+                # Si arranca la generación principal del agente, reseteamos el buffer de respuesta 
+                # (útil si hay reintentos por alucinaciones para no guardar basura)
+                if kind == "on_chat_model_start" and "agent_generation" in tags:
+                    if "".join(full_response_text).strip():
+                        retry_token = "\n\n*(Borrador descartado: corrigiendo imprecisiones detectadas...)*\n\n"
+                        yield f"data: {json.dumps({'type': 'token', 'content': retry_token})}\n\n"
+                    full_response_text.clear()
                 
                 # 1. Detectar cuando el LLM está transmitiendo la respuesta final
-                if kind == "on_chat_model_stream":
-                    # Solo emitir tokens si fueron generados por el nodo principal del agente
-                    if event.get("metadata", {}).get("langgraph_node") == "agent":
-                        content = event["data"]["chunk"].content
-                        if content:
-                            # Enviamos tipo 'token' para que el frontend lo sume al chat
-                            yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
+                if kind == "on_chat_model_stream" and "agent_generation" in tags:
+                    content = event["data"]["chunk"].content
+                    if content:
+                        full_response_text.append(content)
+                        # Enviamos tipo 'token' para que el frontend lo sume al chat
+                        yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
                 
                 # 2. Detectar cuando se llama a una herramienta (Retriever)
                 elif kind == "on_tool_start":
@@ -225,11 +283,76 @@ async def ask_agent_stream(
                     elif node_name == "grade_hallucinations":
                         yield f"data: {json.dumps({'type': 'status', 'content': 'Verificando alucinaciones...'})}\n\n"
 
+        except asyncio.CancelledError:
+            import logging
+            logging.getLogger(__name__).error("[CRÍTICO] El stream fue cancelado (timeout de red o cliente desconectado). LangGraph se interrumpió silenciosamente.")
+            # Yielding a final explicit error is useless if the connection is dead, but we log and re-raise
+            raise
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
             
+    def save_chat_history():
+        try:
+            # Crear la cabecera del chat si no existe
+            title = request.message[:50] + "..." if len(request.message) > 50 else request.message
+            user_id = request.user_info.get("user_id", "anonymous") if request.user_info else "anonymous"
+            thread_uuid = uuid.UUID(thread_id)
+            
+            chat_provider.create_chat(user_id=user_id, title=title, thread_id=thread_uuid)
+            
+            # Guardar mensaje del usuario
+            chat_provider.add_message(thread_id=thread_uuid, role="user", content=request.message)
+            
+            # Guardar respuesta generada completa
+            generated_text = "".join(full_response_text)
+            if generated_text:
+                chat_provider.add_message(thread_id=thread_uuid, role="assistant", content=generated_text)
+        except Exception as e:
+            print(f"[CHAT_PERSISTENCE_ERROR] {e}")
+
+    task = BackgroundTask(save_chat_history)
     # El media_type es crucial para que el frontend (ej. Vercel AI SDK) lo lea como un stream continuo
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(), 
+        media_type="text/event-stream", 
+        background=task,
+        headers={"X-Thread-ID": thread_id}
+    )
+
+@router.delete("/chats/{thread_id}")
+async def delete_chat(
+    thread_id: str,
+    chat_provider = Depends(get_chat_provider)
+):
+    """
+    Elimina un chat (hilo), todos sus mensajes y sus checkpoints de LangGraph.
+    """
+    try:
+        thread_uuid = uuid.UUID(thread_id)
+        
+        # 1. Eliminar de la base de datos relacional (chats y mensajes)
+        if hasattr(chat_provider, "delete_chat"):
+            chat_provider.delete_chat(thread_uuid)
+        else:
+            print("chat_provider doesn't have delete_chat implemented.")
+            
+        # 2. Eliminar checkpoints de PostgreSQL (Aiven)
+        import os
+        uri = os.getenv("AIVEN_PG_URI")
+        if uri:
+            from psycopg import AsyncConnection
+            async with await AsyncConnection.connect(uri) as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute("DELETE FROM checkpoints WHERE thread_id = %s", (str(thread_uuid),))
+                    await cur.execute("DELETE FROM checkpoint_blobs WHERE thread_id = %s", (str(thread_uuid),))
+                    await cur.execute("DELETE FROM checkpoint_writes WHERE thread_id = %s", (str(thread_uuid),))
+                    await conn.commit()
+            
+        return {"status": "success", "message": f"Chat {thread_id} y sus checkpoints eliminados."}
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid thread_id format")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/dead-letter-queue-rabbit")
 def check_dlq_health():

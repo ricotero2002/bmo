@@ -41,16 +41,27 @@ target_metadata = Base.metadata
 
 def get_url() -> str:
     """
-    Construye la URL de la DB desde variables de entorno.
-    Esto permite que el mismo alembic.ini funcione en local y en producción
-    (RDS) sin cambiar el archivo.
+    Construye la URL de la DB usando el proveedor del backend,
+    soportando Oracle y Postgres de forma transparente.
     """
-    user = os.getenv("POSTGRES_USER", "user")
-    password = os.getenv("POSTGRES_PASSWORD", "password")
-    host = os.getenv("DB_HOST", "localhost")
-    port = os.getenv("DB_PORT", "5432")
-    db = os.getenv("POSTGRES_DB", "record_manager")
-    return f"postgresql://{user}:{password}@{host}:{port}/{db}"
+    from src.providers.database.core import get_database_url_and_args
+    db_url, _ = get_database_url_and_args()
+    return db_url
+
+
+def include_object(obj, name, type_, reflected, compare_to):
+    """
+    Filtro para ignorar tablas de infraestructura externa (como LangGraph)
+    en el autogenerate de Alembic.
+    """
+    if type_ == "table":
+        # Ignorar tablas de checkpoints de LangGraph
+        if name.startswith("checkpoint_"):
+            return False
+        # Ignorar tabla de migración de Alembic (por seguridad redundante)
+        if name == "alembic_version":
+            return False
+    return True
 
 
 def run_migrations_offline() -> None:
@@ -58,12 +69,15 @@ def run_migrations_offline() -> None:
     Modo 'offline': genera el SQL sin conectarse a la DB.
     Útil para revisar las migraciones antes de aplicarlas.
     """
-    url = get_url()
+    from src.providers.database.core import get_database_url_and_args
+    url, connect_args = get_database_url_and_args()
+    
     context.configure(
         url=url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_object=include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -73,17 +87,16 @@ def run_migrations_online() -> None:
     """
     Modo 'online': se conecta a la DB y aplica las migraciones directamente.
     """
-    configuration = config.get_section(config.config_ini_section, {})
-    configuration["sqlalchemy.url"] = get_url()
-
-    connectable = engine_from_config(
-        configuration,
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    from src.providers.database.core import get_engine
+    
+    connectable = get_engine()
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection, 
+            target_metadata=target_metadata,
+            include_object=include_object
+        )
         with context.begin_transaction():
             context.run_migrations()
 

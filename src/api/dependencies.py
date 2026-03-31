@@ -45,3 +45,6 @@ def get_orchestrator(request: Request):
 def get_deleting():
     from src.service.delete_file import DeleteOrchestrator
     return DeleteOrchestrator()
+
+def get_chat_provider(request: Request):
+    return request.app.state.chat_provider

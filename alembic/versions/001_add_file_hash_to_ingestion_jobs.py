@@ -16,7 +16,7 @@ depends_on = None
 def upgrade() -> None:
     op.add_column(
         "ingestion_jobs",
-        sa.Column("file_hash", sa.String(), nullable=True),
+        sa.Column("file_hash", sa.String(64), nullable=True),
     )
     op.create_index(
         "ix_ingestion_jobs_file_hash",

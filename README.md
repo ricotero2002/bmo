@@ -26,12 +26,14 @@ Actualmente hemos **finalizado la Fase 5 (Cloud y Kubernetización)**. El sistem
 *   ✅ **PreFase 5: Kubernetización Local y Observabilidad** (¡Completada!)
 *   ✅ **Fase 5: Despliegue en la Nube (OCI/AWS)** (¡Completada!)
     *   *Nota: Se implementó la configuración y CI/CD para despliegue remoto. El despliegue real en el clúster remoto de Kubernetes queda pendiente.*
-*   ⏳ **Fase 6: Frontend Ligero** (Pendiente)
-    *   Interfaz moderna básica (Next.js) y Streaming UI. (Sin sistema de gestión de usuarios completo).
-*   ⏳ **Fase 7: Testing, Optimización y Análisis** (Pendiente)
+*   ✅ **Fase 6: Frontend Ligero y Estabilización** (¡Completada!)
+    *   Interfaz moderna básica (Next.js), Streaming UI, sistema de gestión de historiales de chat y migración de checkpointer LangGraph a PostgreSQL.
+*   ⏳ **Fase 7: Testing, Optimización y Análisis** (En proceso)
     *   Optimización de parámetros del agente, pruebas anti-alucinaciones, análisis de latencias, costos (LLMs y Cloud), y rendimiento de recursos (Kubernetes local vs remoto).
 *   ⏳ **Fase 8: Tareas Pendientes y Mejoras Futuras** (Pendiente)
-    *   Todo lo descartado o pospuesto (ej. Despliegue remoto K8s final, Gestión de Usuarios, GraphRAG con Neo4j).
+    *   Gestión real de Usuarios y Sesiones (Frontend y Backend / Login, JWT).
+    *   GraphRAG con Neo4j para mapeo avanzado de relaciones.
+    *   Despliegue remoto K8s final (OCI/AWS).
 
 ---
 

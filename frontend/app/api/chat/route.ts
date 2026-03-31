@@ -3,7 +3,7 @@ import { createUIMessageStream, createUIMessageStreamResponse } from 'ai';
 export async function POST(req: Request) {
     const json = await req.json();
     const messages = json.messages || [];
-    const threadId = json.threadId || "test-thread";
+    const threadId = json.threadId || "";
     const userId = json.userId || "User";
     const promptVersion = json.promptVersion || "rag_v2";
     const baseUrl = process.env.BACKEND_URL;
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
             try {
                 console.log('[API/CHAT] Fetching from backend:', `${baseUrl}/api/ask/stream`);
                 console.log('[API/CHAT] Payload:', JSON.stringify(payload));
-                
+
                 const response = await fetch(`${baseUrl}/api/ask/stream`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -81,8 +81,8 @@ export async function POST(req: Request) {
                                     // 1. Chunk de texto estándar para el AI SDK
                                     writer.write({
                                         type: 'text-delta',
-                                        id: textPartId, 
-                                        delta: data.content 
+                                        id: textPartId,
+                                        delta: data.content
                                     });
                                 } else if (data.type === 'status' && data.content) {
                                     // 2. Estado efímero (Transient Data)
@@ -90,6 +90,13 @@ export async function POST(req: Request) {
                                         type: 'data-status',
                                         data: { message: data.content },
                                         transient: true // CLAVE: No se guarda en el historial
+                                    });
+                                } else if (data.type === 'thread_id' && data.content) {
+                                    // 3. Capturar ID de nuevo hilo y enviarlo al UI
+                                    writer.write({
+                                        type: 'data-status',
+                                        data: { thread_id: data.content },
+                                        transient: true
                                     });
                                 } else if (data.type === 'error') {
                                     console.error('[API/CHAT] Backend returned error event:', data.content);

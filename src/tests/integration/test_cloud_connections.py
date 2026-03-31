@@ -93,6 +93,38 @@ def test_oracle_db_connection():
     assert row is not None and row[0] == 1, "Oracle DB no devolvió la fila esperada"
     print(f"✅ Oracle DB conectado (TLS) — versión: {version}")
 
+# ─── Aiven PostgreSQL ─────────────────────────────────────────────────────────
+
+@pytest.mark.skipif(
+    not os.getenv("AIVEN_PG_URI"),
+    reason="Falta la variable AIVEN_PG_URI para el test de PostgreSQL"
+)
+def test_aiven_postgres_connection():
+    """
+    Verifica que psycopg puede conectarse a Aiven PostgreSQL usando la Service URI.
+    
+    CÓMO OBTENER EL DATO EN AIVEN CONSOLE:
+      1. Entrar al servicio PostgreSQL.
+      2. En la pestaña "Overview", buscar "Connection information".
+      3. Copiar la "Service URI" completa.
+      4. Pegarla en .env como AIVEN_PG_URI="postgres://..."
+    """
+    import psycopg
+
+    uri = os.getenv("AIVEN_PG_URI")
+    
+    try:
+        # Usamos una conexión síncrona simple para validar las credenciales y red
+        with psycopg.connect(uri) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT version();")
+                version = cur.fetchone()[0]
+                
+                assert version is not None, "PostgreSQL no devolvió versión"
+                print(f"✅ Aiven PostgreSQL conectado — Versión: {version}")
+    except psycopg.OperationalError as e:
+        pytest.fail(f"❌ Error de conexión a Aiven PostgreSQL: {e}")
+
 
 # ─── OCI Object Storage (S3-compatible) ──────────────────────────────────────
 

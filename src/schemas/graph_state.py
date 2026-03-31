@@ -19,10 +19,6 @@ class GraphState(TypedDict):
     user_info: dict 
     # Versión del prompt a utilizar
     prompt_version: str
-    # Generated Response
-    generated : AIMessage
-    # Summary of ancient messages
-    summary: str
     # Counters for retries (reset on each new query)
     retrieve_retry_count: int
     generate_retry_count: int

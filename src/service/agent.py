@@ -42,6 +42,7 @@ class AgentService:
         workflow.add_node("grade_documents", self._grade_documents)
         workflow.add_node("grade_hallucinations", self._grade_hallucinations)
         workflow.add_node("rewrite_query", self._rewrite_query)
+        workflow.add_node("cleanup_rag_memory", self._cleanup_rag_memory)
         workflow.add_node("summarize_conversation", self._summarize_conversation)
 
         workflow.add_edge(START, "agent")
@@ -52,6 +53,8 @@ class AgentService:
         workflow.add_conditional_edges("grade_hallucinations", self._grade_hallucinations_router)
 
         workflow.add_edge("rewrite_query", "agent")
+        workflow.add_edge("cleanup_rag_memory", "summarize_conversation")
+        workflow.add_edge("summarize_conversation", END)
 
         return workflow.compile(checkpointer=self.checkpointer)
 
@@ -69,10 +72,10 @@ class AgentService:
             "user_name": user_info.get("name", "Usuario"),
             "today": date.today().isoformat(),  # "2026-03-19"
             "messages": messages
-        })
+        }, config={"tags": ["agent_generation"]})
 
         # Para que el estado no acumule el mensaje temporal, solo devolvemos la respuesta de la AI
-        return {"messages": [response], "generated": response}
+        return {"messages": [response]}
 
     def _agent_router(self, state: GraphState) -> str:
         messages = state["messages"]
@@ -85,10 +88,8 @@ class AgentService:
         # Si el agente generó contenido vacío (sin texto ni tool_calls)
         # puede suceder cuando no tiene instrucción clara — lo mandamos a resumir o terminar
         if not getattr(last_message, "content", "").strip():
-            logger.warning("Agent generated empty content. Routing to summarize or END.")
-            if len(messages) > 4:
-                return "summarize_conversation"
-            return END
+            logger.warning("Agent generated empty content. Routing to summarize.")
+            return "cleanup_rag_memory"
 
         # Si el agente generó texto, verificar si en CUALQUIER parte del historial
         # se usó el retriever — si es así, siempre pasar por grade_hallucinations
@@ -100,10 +101,7 @@ class AgentService:
             return "grade_hallucinations"
 
         # Si la conversación es muy larga, la resumimos
-        if len(messages) > 6:
-            return "summarize_conversation"
-
-        return END
+        return "cleanup_rag_memory"
 
     def _tools_router(self, state: GraphState) -> str:
         messages = state["messages"]
@@ -270,7 +268,12 @@ class AgentService:
                 docs_text = msg.content
                 break
 
-        generation = state.get("generated", AIMessage(content="")).content
+        # Obtener el último mensaje que debería ser la respuesta del LLM (AIMessage)
+        generation = ""
+        for msg in reversed(messages):
+            if isinstance(msg, AIMessage):
+                generation = msg.content
+                break
 
         grader_model = self.grader_hallucinations_model
 
@@ -325,7 +328,6 @@ class AgentService:
                             "conocimientos para responder con total seguridad a esa pregunta."
                 )
                 update_state["messages"] = [feedback]
-                update_state["generated"] = feedback
 
         return update_state
 
@@ -335,37 +337,75 @@ class AgentService:
         if isinstance(last_msg, HumanMessage) and "alucinaciones" in last_msg.content:
             return "agent"
 
-        # Si la conversación es muy larga, resumir antes de terminar
-        if len(state["messages"]) > 6:
-            return "summarize_conversation"
-
-        return END
+        # Limpiar mensajes pesados y resumir siempre antes de terminar
+        return "cleanup_rag_memory"
 
     async def _summarize_conversation(self, state: GraphState):
         """Resume los mensajes anteriores de la conversación para no exceder los límites de tokens."""
-        summary = state.get("summary", "")
         messages = state["messages"]
-        if len(messages) <= 6:
+
+        # Extraemos el resumen anterior si ya existe para concatenarlo
+        summary = ""
+        for msg in messages:
+            if isinstance(msg, SystemMessage) and msg.content.startswith("Resumen de la conversación hasta ahora:"):
+                summary = msg.content.replace("Resumen de la conversación hasta ahora: ", "").strip()
+                break
+
+        summary_instruction = (
+            f"=== TAREA DE RESUMEN ===\n"
+            f"Resumen histórico previo: '{summary}'\n\n"
+            "Instrucciones:\n"
+            "Lee los mensajes de esta conversación. Si hay un 'Resumen histórico previo', combínalo con la información nueva. "
+            "Si está vacío, simplemente genera un resumen de lo hablado hasta el momento. "
+            "Genera y devuelve ÚNICAMENTE el texto consolidado del resumen, en tercera persona, sin introducciones ni comentarios como 'Aquí tienes...'."
+        )
+
+        messages_to_summarize = [m for m in messages if not (isinstance(m, SystemMessage) and m.content.startswith("Resumen"))]
+
+        if not messages_to_summarize:
             return {"messages": []}
 
-        summary_message = (
-            f"This is summary of conversation to date: {summary}\n\n"
-            "Extend the summary by taking into account the new messages above."
-        )
-
-        messages_to_summarize = messages[:-2]
-
         response = await self.model.ainvoke(
-            messages_to_summarize + [HumanMessage(content=summary_message)]
+            messages_to_summarize + [HumanMessage(content=summary_instruction)]
         )
 
-        delete_messages = [RemoveMessage(id=m.id) for m in messages_to_summarize]
+        last_message = messages[-1] if messages else None
+
+        # Borramos todo exceptuando el ultimo mensaje (el output generado en esta run) 
+        # para que quede en el contexto si en la proxima run el usuario pide hacer algo con eso ("análisis de eso")
+        delete_messages = [RemoveMessage(id=m.id) for m in messages if m.id != getattr(last_message, 'id', None)]
         new_system_summary = SystemMessage(content=f"Resumen de la conversación hasta ahora: {response.content}")
 
         return {
-            "summary": response.content,
             "messages": delete_messages + [new_system_summary]
         }
+
+    async def _cleanup_rag_memory(self, state: GraphState):
+        """
+        Busca los mensajes de las herramientas (RAG) que contienen los documentos
+        pesados y los trunca. Al devolverlos con el mismo ID, LangGraph los
+        sobreescribe en la memoria, evitando que Oracle explote.
+        """
+        messages = state["messages"]
+        updates = []
+
+        for m in messages:
+            # Buscamos ToolMessages que sean excesivamente largos (ej. > 500 caracteres)
+            if isinstance(m, ToolMessage) and len(str(m.content)) > 500:
+                # Creamos un clon exacto (mismo ID y tool_call_id) pero vaciamos el contenido
+                truncated_msg = ToolMessage(
+                    id=m.id,
+                    tool_call_id=m.tool_call_id,
+                    name=m.name,
+                    content="[Documentos recuperados y procesados por el RAG. Contenido removido para optimizar la memoria y evitar límite de Oracle.]"
+                )
+                updates.append(truncated_msg)
+
+        # Si hubo actualizaciones, las devolvemos para que el reducer sobreescriba
+        if updates:
+            return {"messages": updates}
+        
+        return {}
 
     async def chat(self, message: str, thread_id: str, user_info: dict, prompt_version: str):
         # user_id en configurable para que RunnableConfig lo entregue a las tools (invisible para el LLM)
