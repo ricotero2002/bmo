@@ -107,13 +107,17 @@ class IngestionOrchestrator:
             # Compensating transaction: si apply_async falla, marcamos 'failed'
             # para que el próximo re-upload del mismo archivo pueda reintentar.
             try:
+                task_kwargs = {
+                    "doc_id": str(doc_id),
+                    "filename": filename,
+                    "user_id": user_id,
+                    "object_name": object_name
+                }
+                if metadata and "document_date" in metadata and metadata["document_date"]:
+                    task_kwargs["document_date"] = metadata["document_date"]
+
                 task = process_document_task.apply_async(
-                    kwargs={
-                        "doc_id": str(doc_id),
-                        "filename": filename,
-                        "user_id": user_id,
-                        "object_name": object_name
-                    },
+                    kwargs=task_kwargs,
                     task_id=str(doc_id),
                     queue="ingest_q"
                 )

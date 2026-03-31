@@ -21,6 +21,7 @@ async def health_check():
 async def ingest_document(
     file: UploadFile = File(...),
     user_id: Optional[str] = None,
+    document_date: Optional[str] = None,
     orchestrator = Depends(get_orchestrator)
 ):
     """
@@ -36,7 +37,10 @@ async def ingest_document(
             filename=file.filename,
             content=content,
             user_id=user_id,
-            metadata={"content_type": file.content_type}
+            metadata={
+                "content_type": file.content_type,
+                "document_date": document_date
+            }
         )
         
         return {
@@ -51,6 +55,7 @@ async def ingest_document(
 async def ingest_batch(
     files: List[UploadFile] = File(...),
     user_id: Optional[str] = None,
+    document_date: Optional[str] = None,
     orchestrator = Depends(get_orchestrator)
 ):
     """
@@ -70,7 +75,11 @@ async def ingest_batch(
                 filename=file.filename,
                 content=content,
                 user_id=user_id,
-                metadata={"content_type": file.content_type, "batch": True}
+                metadata={
+                    "content_type": file.content_type, 
+                    "batch": True,
+                    "document_date": document_date
+                }
             )
             results.append({**res, "filename": file.filename})
         except Exception as e:

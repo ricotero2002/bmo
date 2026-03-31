@@ -4,6 +4,8 @@ from typing import Optional
 
 from langchain_core.tools import tool
 from langchain_core.runnables import RunnableConfig
+from pydantic import BaseModel, Field
+from src.schemas.metadata import DocType, DOC_TYPES_INLINE
 
 logger = logging.getLogger(__name__)
 
@@ -13,11 +15,21 @@ _vector_store = None
 # Prefijo que identifica respuestas de error de la tool (para detección en el grafo)
 TOOL_ERROR_PREFIX = "ERROR_TOOL:"
 
+class RetrieverInput(BaseModel):
+    query: str = Field(..., description="El texto o pregunta a buscar (requerido, NO puede estar vacío).")
+    date_from: str = Field(default="", description="Fecha mínima de los documentos en formato ISO YYYY-MM-DD (opcional).")
+    source_filter: str = Field(default="", description="Nombre exacto del archivo a filtrar (opcional).")
+    doc_type: Optional[DocType] = Field(
+        default=None, 
+        description=f"Filtra por tipo de documento. Úsalo cuando el usuario sea específico. Valores: {DOC_TYPES_INLINE}."
+    )
+
 
 def build_metadata_filter(
     date_from: Optional[str] = None,
     source_filter: Optional[str] = None,
     user_id: Optional[str] = None,
+    doc_type: Optional[str] = None,
 ) -> Optional[dict]:
     """
     Construye un dict de filtros compatible con ChromaDB / OpenSearch.
@@ -41,6 +53,9 @@ def build_metadata_filter(
     if user_id:
         conditions.append({"user_id": {"$eq": user_id}})
 
+    if doc_type:
+        conditions.append({"doc_type": {"$eq": doc_type}})
+
     if not conditions:
         return None
     if len(conditions) == 1:
@@ -48,11 +63,12 @@ def build_metadata_filter(
     return {"$and": conditions}
 
 
-@tool
+@tool(args_schema=RetrieverInput)
 def knowledge_base_retriever(
     query: str,
     date_from: str = "",
     source_filter: str = "",
+    doc_type: str = "",
     config: RunnableConfig = None,
 ) -> str:
     """
@@ -60,16 +76,6 @@ def knowledge_base_retriever(
 
     Usá esta herramienta para CUALQUIER pregunta que requiera acceder a documentos,
     notas, reuniones, CVs u otra información personal almacenada.
-
-    Parámetros:
-    - query: El texto o pregunta a buscar (requerido, NO puede estar vacío).
-             Ejemplo: "notas de la reunión de hoy", "contenido del CV", "contratos de trabajo".
-    - date_from: Fecha mínima de los documentos en formato ISO YYYY-MM-DD (opcional).
-                 Úsalo cuando el usuario mencione una fecha o período de tiempo.
-                 Ejemplo: si el usuario dice "hoy" y hoy es 2026-03-19, pasá "2026-03-19".
-                 Si dice "este mes", pasá el primer día del mes: "2026-03-01".
-    - source_filter: Nombre exacto del archivo a filtrar (opcional).
-                     Ejemplo: "notas_reunion.pdf", "cv.docx".
     """
     # user_id se inyecta desde el config (invisible para el LLM)
     user_id = None
@@ -89,6 +95,7 @@ def knowledge_base_retriever(
         date_from=date_from or None,
         source_filter=source_filter or None,
         user_id=user_id,
+        doc_type=doc_type or None,
     )
 
     if _vector_store is None:

@@ -43,7 +43,7 @@ PERMANENT_EXCEPTIONS = (
     max_retries=5,
     default_retry_delay=60,
 )
-def process_document_task(self, doc_id: str, filename: str, user_id: Optional[str] = None, object_name: Optional[str] = None) -> Dict[str, Any]:
+def process_document_task(self, doc_id: str, filename: str, user_id: Optional[str] = None, object_name: Optional[str] = None, document_date: Optional[str] = None) -> Dict[str, Any]:
     """
     Task de Celery para procesar documentos de forma asíncrona.
     1. Descarga el archivo desde MinIO usando el object_name (o doc_id).
@@ -87,7 +87,7 @@ def process_document_task(self, doc_id: str, filename: str, user_id: Optional[st
         # Usamos el doc_id como clave primaria lógica en el record manager
         logger.info(f"Creando documento")
         status_provider.update_status(job_uuid, "documenting")
-        document = extraction_service.create_document(text, filename)
+        document = extraction_service.create_document(text, filename, document_date=document_date)
         document.metadata.update({
             "source": doc_id,
             "user_id": user_id,

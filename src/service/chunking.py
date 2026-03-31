@@ -8,8 +8,11 @@ from pydantic import BaseModel
 from src.core.prompts import (
     PROPOSITIONS_PROMPT, FIND_RELEVANT_CHUNK_PROMPT, 
     NEW_CHUNK_SUMMARY_PROMPT, NEW_CHUNK_TITLE_PROMPT,
-    UPDATE_CHUNK_SUMMARY_PROMPT, UPDATE_CHUNK_TITLE_PROMPT
+    UPDATE_CHUNK_SUMMARY_PROMPT, UPDATE_CHUNK_TITLE_PROMPT,
+    GLOBAL_SUMMARY_PROMPT
 )
+from src.schemas.metadata import DocumentMetadataExtraction
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +58,6 @@ class AgenticChunker:
         for c_id, chunk_data in self.chunks.items():
             content = " ".join(chunk_data['propositions'])
             metadata = {
-                "chunk_title": chunk_data['title'],
-                "chunk_summary": chunk_data['summary'],
                 "chunk_type": "agentic"
             }
             docs.append(Document(page_content=content, metadata=metadata))
@@ -147,6 +148,21 @@ class AgenticChunker:
             logger.debug(f"Fallo al extraer ChunkID: {e}")
         return None
 
+class GlobalSummarizer:
+    def __init__(self, llm_factory):
+        self.fast_agent = llm_factory.create(response_format=DocumentMetadataExtraction)
+        
+    def analyze(self, text: str) -> Optional[DocumentMetadataExtraction]:
+        # Tomar los primeros 5000 caracteres como muestra
+        sample = text[:5000]
+        messages = GLOBAL_SUMMARY_PROMPT.format_messages(input=sample)
+        try:
+            result = self.fast_agent.invoke(messages)
+            return result
+        except Exception as e:
+            logger.error(f"Error en GlobalSummarizer: {e}")
+            return None
+
 class ChunkingRouter:
     @staticmethod
     def _is_structured_or_long(text: str, filename: str) -> bool:
@@ -154,16 +170,6 @@ class ChunkingRouter:
         if filename.endswith(".pdf") or filename.endswith(".docx"): return True
         if "# " in text or "## " in text: return True
         return False
-
-    def route_and_split(self, llm_factory, document_text: str, filename: str) -> List[Document]:
-        if self._is_structured_or_long(document_text, filename):
-            logger.info(f"Ruteo: Usando MarkdownTextSplitter para {filename}")
-            splitter = MarkdownTextSplitter(chunk_size=1000, chunk_overlap=200)
-            return getattr(splitter, "create_documents")([document_text])
-        else:
-            logger.info(f"Ruteo: Usando AgenticChunker para {filename}")
-            agentic = AgenticChunker(llm_factory)
-            return agentic.chunk(document_text)
 
 class ChunkingService:
     def __init__(self):
@@ -173,10 +179,48 @@ class ChunkingService:
         text = original_document.page_content
         filename = original_document.metadata.get("source", "unknown")
         
-        chunks = self.router.route_and_split(llm_factory, text, filename)
+        # 1. Global Summarization
+        summarizer = GlobalSummarizer(llm_factory)
+        global_context = summarizer.analyze(text)
         
+        # 2. Ruteo
+        if len(text) > 30000:
+            logger.info("Documento muy grande (> 30000 chars), forzando MarkdownTextSplitter")
+            use_agentic = False
+        elif global_context:
+            use_agentic = global_context.requires_agentic_chunking
+        else:
+            use_agentic = not self.router._is_structured_or_long(text, filename)
+            
+        if not use_agentic:
+            logger.info(f"Ruteo: Usando MarkdownTextSplitter para {filename}")
+            splitter = MarkdownTextSplitter(chunk_size=1000, chunk_overlap=200)
+            chunks = getattr(splitter, "create_documents")([text])
+        else:
+            logger.info(f"Ruteo: Usando AgenticChunker para {filename}")
+            agentic = AgenticChunker(llm_factory)
+            chunks = agentic.chunk(text)
+            
+        # 3. Post-procesamiento e inyección de metadata
         for i, chunk in enumerate(chunks):
             base_meta = original_document.metadata.copy()
+            
+            # Transformación Pre-Chunking (Paso 1.1) y parseo de fecha
+            if global_context:
+                base_meta["doc_type"] = global_context.doc_type
+                
+                # Pre-fijar el contexto global
+                chunk.page_content = f"[Contexto Global de {global_context.doc_type}: {global_context.global_summary}]\n\n{chunk.page_content}"
+                
+                # Si el LLM extrajo fecha y el usuario NO la proveyó manualmente, usamos la del documento (Paso 1.2)
+                if global_context.document_date and not base_meta.get("custom_date"):
+                    try:
+                        parsed_date = datetime.strptime(global_context.document_date[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                        base_meta["created_at"] = parsed_date.timestamp()
+                        base_meta["document_date_str"] = global_context.document_date[:10]
+                    except ValueError:
+                        pass
+                        
             # Si el splitter no puso índice, lo ponemos nosotros secuencialmente
             if "chunk_index" not in chunk.metadata or chunk.metadata["chunk_index"] is None:
                 chunk.metadata["chunk_index"] = i
