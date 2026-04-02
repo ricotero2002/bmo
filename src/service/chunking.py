@@ -11,6 +11,7 @@ from src.core.prompts import (
     UPDATE_CHUNK_SUMMARY_PROMPT, UPDATE_CHUNK_TITLE_PROMPT,
     GLOBAL_SUMMARY_PROMPT
 )
+from src.core.prompts.few_shots import PROPOSITIONS_FEW_SHOTS, ROUTER_FEW_SHOTS
 from src.schemas.metadata import DocumentMetadataExtraction
 from datetime import datetime, timezone
 from langsmith import tracing_context
@@ -33,7 +34,10 @@ class AgenticChunker:
         self.id_truncate_limit = 5
 
     def _get_propositions(self, text: str) -> List[str]:
-        messages = PROPOSITIONS_PROMPT.format_messages(input=text)
+        messages = PROPOSITIONS_PROMPT.format_messages(
+            few_shots=PROPOSITIONS_FEW_SHOTS,
+            input=text
+        )
         try:
             with tracing_context(enabled=False):
                 result = self.sentences_agent.invoke(messages, config={"callbacks": []})
@@ -140,6 +144,7 @@ class AgenticChunker:
     def _find_relevant_chunk(self, proposition) -> Optional[str]:
         current_chunk_outline = self.get_chunk_outline()
         messages = FIND_RELEVANT_CHUNK_PROMPT.format_messages(
+            few_shots=ROUTER_FEW_SHOTS,
             proposition=proposition,
             current_chunk_outline=current_chunk_outline
         )

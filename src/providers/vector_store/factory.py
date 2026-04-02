@@ -7,7 +7,10 @@ from src.providers.vector_store.pinecone_provider import PineconeProvider
 class VectorStoreFactory:
     @staticmethod
     def get_embeddings():
-        return GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
+        return GoogleGenerativeAIEmbeddings(
+            model="models/gemini-embedding-001",
+            google_api_key=os.getenv("GOOGLE_API_KEY")
+        )
 
     @staticmethod
     def get_provider():

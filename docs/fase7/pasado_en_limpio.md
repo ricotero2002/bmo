@@ -22,7 +22,7 @@ Acción: Permitir que los documentos históricos mantengan su fecha real en luga
 
 Implementación: Actualizar los endpoints de tu API para aceptar un campo document_date. Pasar este valor a través de los metadatos en orchestrator.py directo hacia la tarea de Celery, y finalmente usarlo en la función create_document de ingestion.py.
 
-Paso 1.3: Redefinir la "Opción B" (Intención de Chunks)
+Paso 1.3: Redefinir la "Opción B" (Intención de Chunks) (Para luego)
 
 Acción: En lugar de forzar a que cada chunk tenga una etiqueta estricta (que a veces es ambiguo), añadir un metadato más flexible durante el AgenticChunker.
 
@@ -45,6 +45,8 @@ Paso 2.2: Re-Ranking del Contexto
 Acción: Mejorar la precisión (Contextual Precision) de los resultados devueltos por la base vectorial.
 
 Implementación: Añadir un modelo de cross-encoder (como Cohere Rerank). La base vectorial devuelve los top 20 resultados, y el Re-Ranker los reordena quedándose con los top 5 más relevantes para la pregunta exacta del usuario antes de pasarlos a LangGraph.
+
+Capas permitir que elija el k del retriver (con un min y max)
 
 Fase 3: Expansión de Herramientas (Agentic Capabilities)
 Aquí es donde el asistente pasa de ser un simple buscador a un agente proactivo.
@@ -87,3 +89,5 @@ Paso 4.3: Testing Automatizado con Golden Datasets
 Acción: Probar el sistema de forma masiva contra regresiones.
 
 Implementación: Usar los pares guardados en el paso anterior (y generados sintéticamente como el ejemplo que te di antes) para crear un suite de pytest. Puedes usar otro LLM para que actúe como "Juez" y evalúe si la respuesta que está devolviendo tu API actual coincide semánticamente con la respuesta esperada del Golden Dataset.
+
+python -m pytest src/evals/test_rag_agentic.py::test_rag_performance -k goldcase1 -v -s

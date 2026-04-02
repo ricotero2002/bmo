@@ -103,22 +103,46 @@ def knowledge_base_retriever(
         return f"{TOOL_ERROR_PREFIX} la base de conocimientos no está disponible."
 
     try:
+        # Intento 1: Búsqueda con todos los filtros
         docs = _vector_store.similarity_search(
             query,
-            k=3,
+            k=4,
             filter=metadata_filter,
         )
-        logger.info(
-            f"knowledge_base_retriever: filtro={metadata_filter}, "
-            f"docs encontrados={len(docs)}"
-        )
+        
+        # --- AUTO-FALLBACK ---
+        # Si se usaron filtros (fecha, tipo, fuente) y se obtuvieron 0 resultados,
+        # reintentamos sin esos filtros (solo con user_id para aislamiento)
+        has_filters = bool(date_from or source_filter or doc_type)
+        fallback_active = False
+
+        if not docs and has_filters:
+            logger.info("0 resultados con filtros específicos. Reintentando búsqueda pura sin filtros secundarios...")
+            fallback_filter = build_metadata_filter(user_id=user_id)
+            docs = _vector_store.similarity_search(
+                query,
+                k=4,
+                filter=fallback_filter,
+            )
+            fallback_active = True
+        # ---------------------
+
+        logger.info(f"knowledge_base_retriever: docs finales encontrados={len(docs)}")
 
         if not docs:
-            return "No encontré documentos relevantes con esos criterios de búsqueda."
+            return "No encontré documentos relevantes tras intentar incluso una búsqueda general sin filtros."
 
-        return "\n\n".join(
+        system_notice = ""
+        if fallback_active and docs:
+            system_notice = (
+                "[AVISO SISTEMA]: No se encontraron resultados con tus filtros específicos "
+                f"(date_from='{date_from}', source='{source_filter}', type='{doc_type}'). "
+                "Se realizó una búsqueda general por similitud semántica para encontrar contexto relevante.\n\n"
+            )
+
+        return system_notice + "\n\n".join(
             f"[Fuente: {d.metadata.get('source', 'desconocida')} | "
-            f"Fecha: {d.metadata.get('created_at', 'N/A')}]\n{d.page_content}"
+            f"Tipo: {d.metadata.get('doc_type', 'general')}]\n{d.page_content}"
             for d in docs
         )
     except Exception as e:

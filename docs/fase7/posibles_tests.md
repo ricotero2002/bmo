@@ -36,3 +36,11 @@ Generar un reporte de "Puntaje Golden" basado en las evaluaciones del Juez.
 Open Questions
 Ambiente de Base de Datos: ¿Prefieres que usemos una colección de test separada o simplemente filtramos por user_id en la colección actual (recomendado para simplificar)?
 Modelo del Juez: ¿Usamos Gemini 1.5 Flash para el juez (más económico) o Gemini 1.5 Pro (más preciso para evaluar)?
+
+
+
+
+
+pytest src/evals/test_rag_agentic.py::test_rag_performance -v -s
+
+$env:SKIP_INGEST="1"; pytest src/evals/test_rag_agentic.py::test_rag_performance -v -s
