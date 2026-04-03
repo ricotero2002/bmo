@@ -206,6 +206,9 @@ class ChunkingService:
             logger.info(f"Ruteo: Usando MarkdownTextSplitter para {filename}")
             splitter = MarkdownTextSplitter(chunk_size=1000, chunk_overlap=200)
             chunks = getattr(splitter, "create_documents")([text])
+            # Marcamos explícitamente como markdown para el retriever
+            for chunk in chunks:
+                chunk.metadata["chunk_type"] = "markdown"
         else:
             logger.info(f"Ruteo: Usando AgenticChunker para {filename}")
             agentic = AgenticChunker(llm_factory)

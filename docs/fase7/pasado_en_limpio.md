@@ -48,6 +48,8 @@ Implementación: Añadir un modelo de cross-encoder (como Cohere Rerank). La bas
 
 Capas permitir que elija el k del retriver (con un min y max)
 
+
+
 Fase 3: Expansión de Herramientas (Agentic Capabilities)
 Aquí es donde el asistente pasa de ser un simple buscador a un agente proactivo.
 
@@ -89,5 +91,23 @@ Paso 4.3: Testing Automatizado con Golden Datasets
 Acción: Probar el sistema de forma masiva contra regresiones.
 
 Implementación: Usar los pares guardados en el paso anterior (y generados sintéticamente como el ejemplo que te di antes) para crear un suite de pytest. Puedes usar otro LLM para que actúe como "Juez" y evalúe si la respuesta que está devolviendo tu API actual coincide semánticamente con la respuesta esperada del Golden Dataset.
+
+
+
+
+## 3. Análisis de Latencias y Tiempos de Respuesta
+* **Latencia de Ingesta:** El tiempo transcurrido desde que se sube un documento hasta que sus vectores están disponibles y listos para consultar.
+* **Time-to-First-Token (TTFT):** Medir de forma estricta cuánto tarda el LLM en empezar a emitir la primera palabra en la interfaz usando Streaming (SSE).
+* **Latencia de Búsqueda Vectorial:** El tiempo que demora la consulta de similitud antes de que el texto pase al LLM.
+
+## 4. Análisis de Costos y Consumo de Recursos
+* **Eficiencia de Costos de LLMs:** Monitorear el consumo de tokens (Prompt tokens vs Completion tokens) en cada interacción usando los distintos modelos configurados. Proyectar un costo mensual estimado en USD para uso intensivo y uso casual.
+* **Recursos en Kubernetes Local (K3d):** Monitorear y registrar la RAM y CPU consumidas por todo el stack local (API, Celery Workers, Kafka, PostgreSQL, OpenTelemetry, etc.) en reposo vs carga.
+* **Comparativas Cloud:** Estimar los costos reales operativos simulando un entorno AWS (EKS y base de datos gestionada) frente a los nodos Oracle Cloud "Always Free" Ampere A1.
+
+## 5. Pruebas de Estrés y Escalabilidad (Stress Testing)
+* **Simulación de Tráfico:** Utilizar herramientas simples para simular 10, 50 o 100 consultas simultáneas al agente.
+* **Comportamiento del Autoescalado (KEDA + HPA):** Validar observando OpenTelemetry/Grafana si los pods de la API y los workers se replican correctamente en cuanto la CPU promedio supera el 70% o la pila de Kafka/Celery acumula retraso (Lag).
+
 
 python -m pytest src/evals/test_rag_agentic.py::test_rag_performance -k goldcase1 -v -s
