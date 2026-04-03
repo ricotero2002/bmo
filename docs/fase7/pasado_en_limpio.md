@@ -71,6 +71,11 @@ Acción: Orquestar preguntas multi-salto (ej. buscar notas, buscar en web, crear
 
 Implementación: Con las herramientas de RAG y Web ya funcionales, el LLM subyacente (si es suficientemente potente) podrá descomponer la tarea por sí solo. La clave aquí es ajustar tu System Prompt para indicarle explícitamente que está autorizado a usar múltiples herramientas secuencialmente para armar planes complejos.
 
+
+Agregar que siempre se pongan todas las sources en los resultados (base de conocimientos o link) y que se puedan acceder tipo link y puedas ver el archivo (te lo traes del storage) o te redirigis al link. Esta segunda parte seria del frontend pero hay que hacer las modificacion en el bakcend para obtener el link presigned (el temporal) y la forma del source.
+
+
+
 Fase 4: Evaluación Continua y Automatización
 Para asegurar que todo lo anterior no rompa nada y sea escalable.
 

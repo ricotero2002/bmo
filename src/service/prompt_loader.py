@@ -1,28 +1,67 @@
 import os
+from jinja2 import Template
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+
+from src.core.prompts.agent_few_shots import AGENT_FEW_SHOTS
+
 
 class PromptLoader:
     @staticmethod
-    def load(version: str, file_name: str = "system.jinja2") -> ChatPromptTemplate:
-        # Busca en src/core/prompts/<version>/<file_name>
+    def load(version: str = "rag_v3", file_name: str = "system.jinja2") -> ChatPromptTemplate:
+        """
+        Carga el system prompt desde src/core/prompts/<version>/<file_name>.
+
+        Para rag_v3 y superiores, pre-renderiza la variable {{ few_shots }} en load time
+        (es una constante, no depende del contexto de ejecución). Las variables dinámicas
+        como {{ user_name }} y {{ today }} son resueltas en runtime por LangChain.
+
+        Args:
+            version:   Subdirectorio del prompt (default: "rag_v3").
+            file_name: Nombre del archivo de template (default: "system.jinja2").
+
+        Returns:
+            ChatPromptTemplate con el system prompt y MessagesPlaceholder para el historial.
+        """
         base_dir = os.path.dirname(os.path.dirname(__file__))
         path = os.path.join(base_dir, "core", "prompts", version, file_name)
-        
+
         if not os.path.exists(path):
-            # Fallback en caso de que la ruta no exista
             if file_name == "system.jinja2":
                 return ChatPromptTemplate.from_messages([
                     ("system", "Eres un asistente experto."),
                     MessagesPlaceholder(variable_name="messages")
                 ])
             else:
-                return ChatPromptTemplate.from_messages([("human", "Falló la carga de {file_name}")])
-            
+                return ChatPromptTemplate.from_messages([
+                    ("human", f"Falló la carga de {file_name}")
+                ])
+
         with open(path, "r", encoding="utf-8") as f:
             system_prompt = f.read()
-            
-        # El user usó formato jinja2 para renderizar variables como {{ user_name }}
+
+        # Pre-renderizar {{ few_shots }} en load time (constante de módulo).
+        # El resto de variables Jinja2 ({{ user_name }}, {{ today }}) las resuelve
+        # LangChain en runtime vía template_format="jinja2".
+        pre_rendered = Template(system_prompt).render(few_shots=AGENT_FEW_SHOTS)
+
         return ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
+            ("system", pre_rendered),
             MessagesPlaceholder(variable_name="messages")
         ], template_format="jinja2")
+
+    @staticmethod
+    def get_prompt(file_name: str, version: str = "rag_v3", **kwargs) -> str:
+        """
+        Lee y renderiza un template Jinja2 devolviendo el string resultante.
+        Útil para calificadores y prompts auxiliares que no requieren historial de mensajes.
+        """
+        base_dir = os.path.dirname(os.path.dirname(__file__))
+        path = os.path.join(base_dir, "core", "prompts", version, file_name)
+
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Template no encontrado: {path}")
+
+        with open(path, "r", encoding="utf-8") as f:
+            template_text = f.read()
+
+        return Template(template_text).render(**kwargs)

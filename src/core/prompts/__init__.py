@@ -3,6 +3,7 @@ from .summaries import NEW_CHUNK_SUMMARY_PROMPT, UPDATE_CHUNK_SUMMARY_PROMPT
 from .titles import NEW_CHUNK_TITLE_PROMPT, UPDATE_CHUNK_TITLE_PROMPT
 from .router import FIND_RELEVANT_CHUNK_PROMPT
 from .global_summary import GLOBAL_SUMMARY_PROMPT
+from .agent_few_shots import AGENT_FEW_SHOTS
 
 __all__ = [
     "PROPOSITIONS_PROMPT",
@@ -11,5 +12,6 @@ __all__ = [
     "NEW_CHUNK_TITLE_PROMPT",
     "UPDATE_CHUNK_TITLE_PROMPT",
     "FIND_RELEVANT_CHUNK_PROMPT",
-    "GLOBAL_SUMMARY_PROMPT"
+    "GLOBAL_SUMMARY_PROMPT",
+    "AGENT_FEW_SHOTS",
 ]

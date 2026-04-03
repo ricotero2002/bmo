@@ -61,5 +61,11 @@ setuptools<82.0.0
 langchain-pinecone
 pinecone-client
 oracledb
-certifi   # CA bundle para confluent-kafka en contenedores slim (Aiven SSL)
+certifi
 prometheus-fastapi-instrumentator==7.0.2
+
+duckduckgo-search>=6.0.0
+ddgs
+jinja2>=3.0.0
+requests
+beautifulsoup4

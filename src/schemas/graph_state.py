@@ -33,3 +33,9 @@ class GradeDocuments(BaseModel):
 class GradeHallucinations(BaseModel):
     """Puntuación binaria para presencia de alucinaciones."""
     binary_score: str = Field(description="¿La respuesta está basada en los hechos? 'yes' o 'no'")
+
+
+class GradeCompletion(BaseModel):
+    """Verifica si el agente completó todas las tareas solicitadas."""
+    binary_score: str = Field(description="¿Se completaron todas las tareas? 'yes' o 'no'")
+    missing_action: str = Field(description="Descripción de la tarea pendiente")

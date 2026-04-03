@@ -8,12 +8,10 @@ from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field
 from langchain_core.documents import Document
 from langchain_core.callbacks import Callbacks
-# Import para el Compressor (ahora vive en langchain_core)
 from langchain_core.documents import BaseDocumentCompressor
-
-# Import para el Retriever (vive en langchain)
 from langchain_classic.retrievers.contextual_compression import ContextualCompressionRetriever
 
+from src.providers.storage.factory import StorageFactory
 from src.schemas.metadata import DocType, DOC_TYPES_INLINE
 from src.core.llm import LLMFactory
 
@@ -47,25 +45,26 @@ class GeminiReranker(BaseDocumentCompressor):
         
         docs_text = ""
         for i, doc in enumerate(documents):
-            # Limpiamos saltos de línea para que el prompt sea más compacto
-            content_snippet = doc.page_content.replace("\n", " ")[:500]
+            # Limpiamos saltos de línea y aumentamos a 1000 caracteres para mejor contexto
+            content_snippet = doc.page_content.replace("\n", " ")[:1000]
             docs_text += f"--- Documento {i} ---\n{content_snippet}\n\n"
             
-        prompt = f"""Eres un experto evaluador de relevancia de documentos.
-Tu tarea es seleccionar los {self.k} documentos más relevantes para responder a la consulta del usuario.
+        prompt = f"""Eres un auditor de relevancia experto para un sistema RAG (Retrieval Augmented Generation).
+Tu misión es seleccionar los documentos que contienen la respuesta DIRECTA o información CRÍTICA para la consulta del usuario.
 
-Consulta: "{query}"
+Consulta del usuario: "{query}"
 
-Documentos:
+Documentos candidatos:
 {docs_text}
 
-Instrucciones:
-1. Analiza cada documento y compáralo con la consulta.
-2. Selecciona hasta {self.k} índices de los documentos más útiles.
-3. Devuelve ÚNICAMENTE un array en formato JSON con los índices (números enteros) seleccionados, ordenados del más relevante al menos relevante.
-Ejemplo de respuesta: [3, 0, 1]
+Instrucciones de puntuación estricta:
+1. EVALÚA cada documento: ¿Contiene datos, fechas o hechos que respondan a la consulta?
+2. PRIORIZA la evidencia directa sobre menciones tangenciales.
+3. SELECCIONA hasta {self.k} índices, ordenados de MAYOR a menor relevancia.
+4. Devuelve ÚNICAMENTE un array JSON de enteros. Ejemplo: [2, 0]
+5. Si ningún documento tiene relación real, devuelve [].
 
-Si ningún documento es relevante, devuelve []. No escribas explicaciones ni markdown."""
+REGLA DE ORO: No devuelvas explicaciones, solo el array JSON."""
         
         try:
             response = llm.invoke(prompt)
@@ -263,11 +262,20 @@ def knowledge_base_retriever(
                 content = expanded_text if expanded_text else doc.page_content
             else:
                 content = doc.page_content
-                
+
+            # Generar Presigned URL para que el LLM pueda incluirla en ### Fuentes
+            try:
+                presigned_url = StorageFactory.get_storage().get_file_url(object_name=source)
+            except Exception as url_err:
+                logger.error(f"Error generando presigned URL para '{source}': {url_err}")
+                presigned_url = "#"
+
+            doc_type_str = doc.metadata.get('doc_type', 'general')
             final_results.append(
-                f"[Fuente: {source or 'desconocida'} | Tipo: {doc.metadata.get('doc_type', 'general')}]\n{content}"
+                f"[Fuente: {source or 'desconocida'} | URL: {presigned_url} | Tipo: {doc_type_str}]\n{content}"
             )
             processed_blobs.add(blob_id)
+
 
         return "\n\n---\n\n".join(final_results)
 

@@ -6,7 +6,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.types import RetryPolicy, Command
 from langgraph.prebuilt import ToolNode
 
-from src.schemas.graph_state import GraphState, GradeDocuments, GradeHallucinations
+from src.schemas.graph_state import GraphState, GradeDocuments, GradeHallucinations, GradeCompletion
 from src.service.prompt_loader import PromptLoader
 from src.tools.metadata_filter import TOOL_ERROR_PREFIX
 from langchain_core.prompts import PromptTemplate
@@ -26,31 +26,43 @@ class AgentService:
         )
         self.grader_docs_model = llm_factory.create(response_format=GradeDocuments)
         self.grader_hallucinations_model = llm_factory.create(response_format=GradeHallucinations)
+        self.checker_completion_model = llm_factory.create(response_format=GradeCompletion)
         self.tools = tools
         self.checkpointer = checkpointer
+        self.prompt_loader = PromptLoader  # Permite acceso dinámico a get_prompt
         self.graph = self._build_graph()
 
     def _build_graph(self):
         workflow = StateGraph(GraphState)
 
         workflow.add_node("agent", self._call_agent)
-
+        workflow.add_node("agent_router", self._agent_router) # Registrado como nodo para soportar Command
+        
         # Resiliencia Externa: ToolNode reintentará 3 veces ante caídas de red o API
         tool_retry_policy = RetryPolicy(max_attempts=3, backoff_factor=1.5, jitter=True)
         workflow.add_node("tools", ToolNode(self.tools), retry=tool_retry_policy)
 
         workflow.add_node("grade_documents", self._grade_documents)
-        workflow.add_node("grade_hallucinations", self._grade_hallucinations)
+        workflow.add_node("grade_generation_vs_documents", self._grade_generation_vs_documents_and_question)
+        workflow.add_node("grade_task_completion", self._grade_task_completion)
         workflow.add_node("rewrite_query", self._rewrite_query)
         workflow.add_node("cleanup_rag_memory", self._cleanup_rag_memory)
         workflow.add_node("summarize_conversation", self._summarize_conversation)
 
         workflow.add_edge(START, "agent")
+        
+        # El agente siempre pasa por el router (ahora un nodo) para decidir el siguiente paso
+        workflow.add_edge("agent", "agent_router")
 
-        workflow.add_conditional_edges("agent", self._agent_router)
-        workflow.add_conditional_edges("tools", self._tools_router)
+        # Enrutamos inteligentemente después de ejecutar las herramientas
+        workflow.add_conditional_edges(
+            "tools", 
+            self._route_after_tools, 
+            {"grade_documents": "grade_documents", "agent": "agent"}
+        )
         workflow.add_conditional_edges("grade_documents", self._grade_docs_router)
-        workflow.add_conditional_edges("grade_hallucinations", self._grade_hallucinations_router)
+        workflow.add_conditional_edges("grade_generation_vs_documents", self._grade_hallucinations_router)
+        workflow.add_conditional_edges("grade_task_completion", self._grade_task_completion_router)
 
         workflow.add_edge("rewrite_query", "agent")
         workflow.add_edge("cleanup_rag_memory", "summarize_conversation")
@@ -75,72 +87,110 @@ class AgentService:
         # Para que el estado no acumule el mensaje temporal, solo devolvemos la respuesta de la AI
         return {"messages": [response]}
 
-    def _agent_router(self, state: GraphState) -> str:
+    def _agent_router(self, state: GraphState) -> Command:
         messages = state["messages"]
         last_message = messages[-1]
 
         # Si la LLM decidió llamar a una herramienta
         if last_message.tool_calls:
-            return "tools"
+            return Command(goto="tools")
 
         # Si el agente generó contenido vacío (sin texto ni tool_calls)
-        # puede suceder cuando no tiene instrucción clara — lo mandamos a resumir o terminar
+        # puede suceder cuando no tiene instrucción clara o falla al sintetizar el contexto
         if not getattr(last_message, "content", "").strip():
-            logger.warning("Agent generated empty content. Routing to summarize.")
-            return "cleanup_rag_memory"
+            # Si hubo un uso previo de herramientas de búsqueda, es un fallo de síntesis (no de herramientas)
+            retriever_used = any(
+                isinstance(msg, ToolMessage) and msg.name in [_RETRIEVER_TOOL_NAME, "web_search"]
+                for msg in messages
+            )
+            if retriever_used:
+                # Si falló la síntesis pero hay información, le damos un "nudge" (codazo)
+                # OJO: Solo hacemos esto SI no hemos reintentado demasiado
+                retry_count = state.get("generate_retry_count", 0)
+                if retry_count < MAX_RETRIES:
+                    logger.warning(f"Agent failed to synthesize content. Retry {retry_count + 1}/{MAX_RETRIES}.")
+                    # IMPORTANTE: Enviamos un mensaje de sistema MUY claro
+                    nudge_msg = HumanMessage(content="[SISTEMA]: Encontraste la información en las herramientas, pero no generaste una respuesta para el usuario. EXPLICACIÓN: Por favor, responde basándote en los documentos encontrados detallando los datos específicos.")
+                    return Command(
+                        update={
+                            "generate_retry_count": retry_count + 1,
+                            "messages": [nudge_msg]
+                        },
+                        goto="agent"
+                    )
+            
+            logger.warning("Agent generated empty content and no retrieval context found. Routing to cleanup.")
+            return Command(goto="cleanup_rag_memory")
 
         # Si el agente generó texto, verificar si en CUALQUIER parte del historial
-        # se usó el retriever — si es así, siempre pasar por grade_hallucinations
+        # se usó el retriever o búsqueda web — si es así, siempre pasar por validación
         retriever_used = any(
-            isinstance(msg, ToolMessage) and msg.name == _RETRIEVER_TOOL_NAME
+            isinstance(msg, ToolMessage) and msg.name in [_RETRIEVER_TOOL_NAME, "web_search"]
             for msg in messages
         )
         if retriever_used:
-            return "grade_hallucinations"
+            return Command(goto="grade_generation_vs_documents")
 
         # Si la conversación es muy larga, la resumimos
-        return "cleanup_rag_memory"
+        return Command(goto="cleanup_rag_memory")
 
-    def _tools_router(self, state: GraphState) -> str:
+    def _route_after_tools(self, state: GraphState) -> str:
+        """Enruta los mensajes dependiendo de qué herramienta se acaba de ejecutar."""
         messages = state["messages"]
-        last_message = messages[-1]
-
-        # El retriever unificado pasa por el grader de documentos
-        if getattr(last_message, "name", "") == _RETRIEVER_TOOL_NAME:
+        
+        # Buscamos qué herramientas se acaban de ejecutar en el último turno
+        tool_names = []
+        for msg in reversed(messages):
+            if msg.type == "tool":
+                tool_names.append(msg.name)
+            elif msg.type == "ai":
+                break # Llegamos al mensaje donde el LLM pidió las tools, paramos de mirar hacia atrás
+                
+        retrieval_tools = [_RETRIEVER_TOOL_NAME, "web_search"]
+        
+        # Si usó alguna herramienta de búsqueda de información, hay que evaluar los documentos
+        if any(name in retrieval_tools for name in tool_names):
             return "grade_documents"
-
-        # Si es el clima u otra tool, volvemos al agente
+            
+        # Si usó una herramienta de acción (ej. save_note_to_knowledge_base, open_weather_map)
+        # No hay documentos que evaluar, volvemos al agente para que genere la respuesta final.
         return "agent"
 
+    def _tools_router(self, state: GraphState) -> str:
+        """Helper para retrocompatiblidad si se llama desde otros puntos, redirige a _route_after_tools."""
+        return self._route_after_tools(state)
+
     async def _grade_documents(self, state: GraphState):
-        """Grades the relevance of retrieved documents."""
-        messages = state["messages"]
+        """Evalúa si los documentos (locales o web) recuperados son relevantes."""
+        docs_content = ""
+        error_detail = ""
+        has_search_tool = False
 
-        question = "pregunta desconocida"
-        for msg in reversed(messages):
-            if isinstance(msg, HumanMessage) and not msg.content.startswith("Las búsquedas previas no arrojaron"):
-                question = msg.content
-                break
+        # Solo buscamos en los mensajes que acaban de ocurrir (último turno)
+        for msg in reversed(state["messages"]):
+            if msg.type == "tool":
+                if msg.name in [_RETRIEVER_TOOL_NAME, "web_search"]:
+                    has_search_tool = True
+                    docs_content += f"\n{msg.content}"
+                    if TOOL_ERROR_PREFIX in str(msg.content):
+                        error_detail = str(msg.content)
+            elif msg.type == "ai":
+                break # Paramos en el mensaje del agente que pidió las tools
 
-        docs_text = messages[-1].content
+        if not has_search_tool:
+            return Command(goto="agent")
 
-        # Si la tool devolvió un error técnico, forzar reintento inmediato via Command
-        if docs_text.startswith(TOOL_ERROR_PREFIX):
-            error_detail = docs_text[len(TOOL_ERROR_PREFIX):].strip()
-            retry_count = state.get("retrieve_retry_count", 0) + 1
+        if error_detail:
+            retry_count = state.get("retrieve_retry_count", 0)
+            new_count = retry_count + 1
+            if new_count >= MAX_RETRIES:
+                logger.warning(f"retrieve_retry_count={new_count} >= MAX_RETRIES. Agent informará.")
+                return Command(goto="agent", update={"retrieve_retry_count": new_count})
 
-            if retry_count > MAX_RETRIES:
-                logger.error("Tool error exceeded max retries. Giving up.")
-                return {
-                    "retrieve_retry_count": retry_count,
-                    "docs_parse_retries": state.get("docs_parse_retries", 0)
-                }
-
-            logger.warning(f"Tool returned error (attempt {retry_count}): {error_detail}")
             return Command(
                 goto="agent",
                 update={
-                    "retrieve_retry_count": retry_count,
+                    "retrieve_retry_count": new_count,
                     "messages": [
                         HumanMessage(
                             content=(
@@ -152,86 +202,51 @@ class AgentService:
                 }
             )
 
-        # Caso 2: Reintentos agotados → ordenarle al agente que informe al usuario
-        current_retries = state.get("retrieve_retry_count", 0)
-        if current_retries >= MAX_RETRIES:
-            logger.warning(f"retrieve_retry_count={current_retries} >= MAX_RETRIES. Telling agent to inform user.")
+        if "No encontré" in docs_content or "La búsqueda web no arrojó" in docs_content:
             return Command(
                 goto="agent",
                 update={
                     "messages": [
                         HumanMessage(
                             content=(
-                                "[SISTEMA]: No se encontró información tras múltiples búsquedas. "
-                                "Respondí al usuario indicando que no encontraste los datos."
+                                "[SISTEMA]: La búsqueda no arrojó resultados. "
+                                "Informa al usuario o intenta con otra herramienta."
                             )
                         )
                     ],
                 }
             )
 
-        grader_model = self.grader_docs_model
+        prompt = self.prompt_loader.get_prompt(
+            "grader_document.jinja2",
+            version=state.get("prompt_version", "rag_v3"),
+            document_context=docs_content,
+            question=state["messages"][0].content
+        )
+        response = await self.grader_docs_model.ainvoke(prompt)
+        
+        if response.binary_score == "yes":
+            return Command(goto="agent")
+        else:
+            retries = state.get("docs_parse_retries", 0)
+            new_count = retries + 1
+            if new_count >= MAX_RETRIES:
+                return Command(goto="agent", update={"docs_parse_retries": new_count})
 
-        import os
-        base_dir = os.path.dirname(os.path.dirname(__file__))
-        path = os.path.join(base_dir, "core", "prompts", state.get("prompt_version", "rag_v1"), "grader_document.jinja2")
-        with open(path, "r", encoding="utf-8") as f:
-            template_text = f.read()
-
-        pt = PromptTemplate.from_template(template_text, template_format="jinja2")
-        chain = pt | grader_model
-
-        try:
-            res = await chain.ainvoke({"document_context": docs_text, "question": question})
-            parse_retries = 0
-        except Exception as e:
-            parse_retries = state.get("docs_parse_retries", 0) + 1
-            if parse_retries > MAX_RETRIES:
-                logger.error("GradeDocuments exceeded max parsing retries. Aborting check.")
-                return {
-                    "retrieve_retry_count": state.get("retrieve_retry_count", 0),
-                    "docs_parse_retries": parse_retries
-                }
-
-            error_msg = f"Tu evaluación falló con el error: {str(e)}. Debes devolver obligatoriamente un JSON estructurado con la llave 'binary_score' con valor 'yes' o 'no'."
-            logger.warning(f"GradeDocuments failed parsing (attempt {parse_retries}). Retrying.")
             return Command(
-                goto="grade_documents",
+                goto="agent",
                 update={
-                    "messages": [SystemMessage(content=error_msg)],
-                    "docs_parse_retries": parse_retries
+                    "docs_parse_retries": new_count,
+                    "messages": [
+                        HumanMessage(
+                            content=(
+                                "[SISTEMA]: Los documentos recuperados no parecen responder a la pregunta inicial. "
+                                "Intenta buscar con otros parámetros o usando otra herramienta (ej. web_search si usaste local)."
+                            )
+                        )
+                    ],
                 }
             )
-
-        update_state = {"docs_parse_retries": 0}
-
-        if res.binary_score.lower() == "yes":
-            update_state["retrieve_retry_count"] = state.get("retrieve_retry_count", 0)
-            return update_state
-        else:
-            new_count = state.get("retrieve_retry_count", 0) + 1
-            update_state["retrieve_retry_count"] = new_count
-
-            # Si se agotaron los reintentos, mandar al agente con instrucción explícita
-            if new_count >= MAX_RETRIES:
-                logger.warning(f"retrieve_retry_count={new_count} >= MAX_RETRIES. Telling agent to inform user.")
-                return Command(
-                    goto="agent",
-                    update={
-                        "retrieve_retry_count": new_count,
-                        "docs_parse_retries": 0,
-                        "messages": [
-                            HumanMessage(
-                                content=(
-                                    "[SISTEMA]: Los documentos recuperados no son relevantes para la pregunta. "
-                                    "DEBES responder al usuario explicando que no encontraste la información."
-                                )
-                            )
-                        ],
-                    }
-                )
-
-            return update_state
 
     def _grade_docs_router(self, state: GraphState) -> str:
         count = state.get("retrieve_retry_count", 0)
@@ -255,37 +270,29 @@ class AgentService:
         )
         return {"messages": [feedback]}
 
-    async def _grade_hallucinations(self, state: GraphState):
-        """Comprueba si la respuesta introdujo datos falsos no presentes en el documento."""
-        messages = state["messages"]
+    async def _grade_generation_vs_documents_and_question(self, state: GraphState):
+        """Chequea alucinaciones contra TODAS las fuentes (local + web)."""
+        docs_content = ""
+        for msg in state["messages"]:
+            if msg.type == "tool" and msg.name in [_RETRIEVER_TOOL_NAME, "web_search"]:
+                docs_content += f"\n{msg.content}"
 
-        # Encontrar docs (último ToolMessage del retriever)
-        docs_text = ""
-        for msg in reversed(messages):
-            if isinstance(msg, ToolMessage) and msg.name == _RETRIEVER_TOOL_NAME:
-                docs_text = msg.content
-                break
+        if not docs_content:
+            # Si no usó herramientas de búsqueda, no hay qué chequear por alucinación
+            return END
 
-        # Obtener el último mensaje que debería ser la respuesta del LLM (AIMessage)
-        generation = ""
-        for msg in reversed(messages):
-            if isinstance(msg, AIMessage):
-                generation = msg.content
-                break
-
+        generation = state["messages"][-1].content
         grader_model = self.grader_hallucinations_model
 
-        import os
-        base_dir = os.path.dirname(os.path.dirname(__file__))
-        path = os.path.join(base_dir, "core", "prompts", state.get("prompt_version", "rag_v1"), "grader_hallucination.jinja2")
-        with open(path, "r", encoding="utf-8") as f:
-            template_text = f.read()
-
-        pt = PromptTemplate.from_template(template_text, template_format="jinja2")
-        chain = pt | grader_model
+        prompt = self.prompt_loader.get_prompt(
+            "grader_hallucination.jinja2",
+            version=state.get("prompt_version", "rag_v3"),
+            document_context=docs_content,
+            generation=generation
+        )
 
         try:
-            res = await chain.ainvoke({"document_context": docs_text, "generation": generation})
+            res = await grader_model.ainvoke(prompt)
         except Exception as e:
             parse_retries = state.get("hallucinations_parse_retries", 0) + 1
 
@@ -335,7 +342,90 @@ class AgentService:
         if isinstance(last_msg, HumanMessage) and "alucinaciones" in last_msg.content:
             return "agent"
 
-        # Limpiar mensajes pesados y resumir siempre antes de terminar
+        # Tras validar alucinaciones, verificamos si faltan tareas por completar
+        return "grade_task_completion"
+
+    async def _grade_task_completion(self, state: GraphState):
+        """Verifica si el agente completó todas las peticiones basándose ÚNICAMENTE en las herramientas usadas."""
+        user_msgs = [m.content for m in state["messages"] if m.type == "human" and not str(m.content).startswith("[SISTEMA]")]
+        last_user_msg = user_msgs[-1] if user_msgs else ""
+        agent_msg = state["messages"][-1].content
+
+        # Recolectar el historial de herramientas usadas
+        used_tools = set()
+        for msg in state["messages"]:
+            if msg.type == "tool":
+                used_tools.add(msg.name)
+
+        if "Lo siento, no pude obtener datos" in agent_msg or "La búsqueda no arrojó resultados" in agent_msg:
+            return {"messages": []}
+
+        # --- Lógica Determinista Primero (evita falsos negativos del LLM auditor) ---
+        # Detectar si el usuario pidió explícitamente guardar
+        save_keywords = ["guardar", "crear nota", "escribir en un documento", "resumir y guardar", "anota", "guarda esto"]
+        user_asked_save = any(kw in last_user_msg.lower() for kw in save_keywords)
+
+        # Detectar si el usuario pidió explícitamente buscar en internet
+        web_keywords = ["busca en internet", "busca en la web", "googlea", "noticias de hoy", "información actualizada online", "buscar en internet"]
+        user_asked_web = any(kw in last_user_msg.lower() for kw in web_keywords)
+
+        # Caso 1: Pidió guardar y no usó la herramienta → fallo claro
+        if user_asked_save and "save_note_to_knowledge_base" not in used_tools:
+            retries = state.get("generate_retry_count", 0)
+            if retries >= MAX_RETRIES:
+                return {"messages": [], "generate_retry_count": retries}
+            return {
+                "generate_retry_count": retries + 1,
+                "messages": [HumanMessage(content="[SISTEMA]: Aún no has completado la solicitud del usuario (o alucinaste haberlo hecho sin usar la herramienta). Tarea pendiente detectada por el auditor: Falta usar save_note_to_knowledge_base. DEBES usar la herramienta correspondiente AHORA MISMO y no inventar que ya lo hiciste.")]
+            }
+
+        # Caso 2: Pidió buscar en web y no usó la herramienta → fallo claro
+        if user_asked_web and "web_search" not in used_tools:
+            retries = state.get("generate_retry_count", 0)
+            if retries >= MAX_RETRIES:
+                return {"messages": [], "generate_retry_count": retries}
+            return {
+                "generate_retry_count": retries + 1,
+                "messages": [HumanMessage(content="[SISTEMA]: Aún no has completado la solicitud del usuario. Tarea pendiente: Falta usar web_search. DEBES usar la herramienta AHORA MISMO.")]
+            }
+
+        # Caso 3: Si usó alguna herramienta y no hay tareas pendientes → todo OK
+        if used_tools:
+            return {"messages": []}
+
+        # Caso 4 (raro): No usó ninguna herramienta → delegar al LLM solo en este caso extremo
+        prompt = f"""
+        Eres un auditor estricto. El agente NO utilizó ninguna herramienta para responder al usuario.
+
+        Instrucción del usuario: {last_user_msg}
+        Respuesta del Agente: {agent_msg}
+        Herramientas Ejecutadas: Ninguna
+
+        ¿La pregunta del usuario era conversacional (saludo, agradecimiento, etc.) que NO requería herramientas?
+        Si es conversacional: CALIFICA 'yes' y missing_action = 'N/A'.
+        Si requería herramientas y el agente no las usó: CALIFICA 'no' y describe la acción faltante.
+        """
+
+        response = await self.checker_completion_model.ainvoke(prompt)
+
+        if response.binary_score == "no":
+            retries = state.get("generate_retry_count", 0)
+            if retries >= MAX_RETRIES:
+                return {"messages": [], "generate_retry_count": retries}
+            return {
+                "generate_retry_count": retries + 1,
+                "messages": [HumanMessage(content=f"[SISTEMA]: Aún no has completado la solicitud del usuario (o alucinaste haberlo hecho sin usar la herramienta). Tarea pendiente detectada por el auditor: {response.missing_action}. DEBES usar la herramienta correspondiente AHORA MISMO y no inventar que ya lo hiciste.")]
+            }
+
+        return {"messages": []}
+
+    def _grade_task_completion_router(self, state: GraphState) -> str:
+        last_msg = state["messages"][-1]
+        # Si el supervisor inyectó una instrucción del sistema como HumanMessage, volvemos al agente
+        if isinstance(last_msg, HumanMessage) and "[SISTEMA]: Aún no has completado" in last_msg.content:
+            return "agent"
+
+        # Si todo está ok, limpiar y terminar
         return "cleanup_rag_memory"
 
     async def _summarize_conversation(self, state: GraphState):
