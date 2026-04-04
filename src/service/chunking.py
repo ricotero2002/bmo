@@ -64,7 +64,9 @@ class AgenticChunker:
         for c_id, chunk_data in self.chunks.items():
             content = " ".join(chunk_data['propositions'])
             metadata = {
-                "chunk_type": "agentic"
+                "chunk_type": "agentic",
+                "chunk_title": chunk_data.get('title', 'Sin título'),
+                "chunk_summary": chunk_data.get('summary', 'Sin resumen')
             }
             docs.append(Document(page_content=content, metadata=metadata))
             
@@ -178,8 +180,42 @@ class GlobalSummarizer:
 class ChunkingRouter:
     @staticmethod
     def _is_structured_or_long(text: str, filename: str) -> bool:
-        if filename.endswith(".pdf") or filename.endswith(".docx"): return True
+        # Si tiene extensiones que suelen ser estructuradas
+        if filename.endswith(".pdf") or filename.endswith(".docx"): 
+            return True
+        # Si el texto contiene headers de Markdown (# Titulo)
+        if "#" in text and ("\n# " in text or text.startswith("# ")):
+            return True
         return False
+
+    def route_and_split(self, llm_factory, text: str, filename: str, global_context: Optional[DocumentMetadataExtraction] = None) -> List[Document]:
+        """
+        Decide qué estrategia de chunking usar (Markdown o Agéntico) y ejecuta la división.
+        """
+        # 1. Decisión de estrategia
+        if len(text) > 20000:
+            logger.info("Documento muy grande (> 20000 chars), forzando MarkdownTextSplitter")
+            use_agentic = False
+        elif global_context:
+            use_agentic = global_context.requires_agentic_chunking
+        else:
+            use_agentic = not self._is_structured_or_long(text, filename)
+            
+        # 2. Ejecución
+        if not use_agentic:
+            logger.info(f"Ruteo: Usando MarkdownTextSplitter para {filename}")
+            splitter = MarkdownTextSplitter(chunk_size=1000, chunk_overlap=200)
+            # Usamos create_documents envuelto en una lista porque espera una lista de textos
+            chunks = splitter.create_documents([text])
+            # Marcamos explícitamente como markdown para el retriever
+            for chunk in chunks:
+                chunk.metadata["chunk_type"] = "markdown"
+        else:
+            logger.info(f"Ruteo: Usando AgenticChunker para {filename}")
+            agentic = AgenticChunker(llm_factory)
+            chunks = agentic.chunk(text)
+            
+        return chunks
 
 class ChunkingService:
     def __init__(self):
@@ -193,26 +229,8 @@ class ChunkingService:
         summarizer = GlobalSummarizer(llm_factory)
         global_context = summarizer.analyze(text)
         
-        # 2. Ruteo
-        if len(text) > 20000:
-            logger.info("Documento muy grande (> 30000 chars), forzando MarkdownTextSplitter")
-            use_agentic = False
-        elif global_context:
-            use_agentic = global_context.requires_agentic_chunking
-        else:
-            use_agentic = not self.router._is_structured_or_long(text, filename)
-            
-        if not use_agentic:
-            logger.info(f"Ruteo: Usando MarkdownTextSplitter para {filename}")
-            splitter = MarkdownTextSplitter(chunk_size=1000, chunk_overlap=200)
-            chunks = getattr(splitter, "create_documents")([text])
-            # Marcamos explícitamente como markdown para el retriever
-            for chunk in chunks:
-                chunk.metadata["chunk_type"] = "markdown"
-        else:
-            logger.info(f"Ruteo: Usando AgenticChunker para {filename}")
-            agentic = AgenticChunker(llm_factory)
-            chunks = agentic.chunk(text)
+        # 2. Ruteo y división (delegado al router)
+        chunks = self.router.route_and_split(llm_factory, text, filename, global_context)
             
         # 3. Post-procesamiento e inyección de metadata
         for i, chunk in enumerate(chunks):

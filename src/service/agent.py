@@ -6,7 +6,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.types import RetryPolicy, Command
 from langgraph.prebuilt import ToolNode
 
-from src.schemas.graph_state import GraphState, GradeDocuments, GradeHallucinations, GradeCompletion
+from src.schemas.graph_state import GraphState, GradeDocuments, GradeHallucinations, GradeCompletion, TaskPlan, TaskStep
 from src.service.prompt_loader import PromptLoader
 from src.tools.metadata_filter import TOOL_ERROR_PREFIX
 from langchain_core.prompts import PromptTemplate
@@ -27,6 +27,7 @@ class AgentService:
         self.grader_docs_model = llm_factory.create(response_format=GradeDocuments)
         self.grader_hallucinations_model = llm_factory.create(response_format=GradeHallucinations)
         self.checker_completion_model = llm_factory.create(response_format=GradeCompletion)
+        self.task_planner_model = llm_factory.create(response_format=TaskPlan)
         self.tools = tools
         self.checkpointer = checkpointer
         self.prompt_loader = PromptLoader  # Permite acceso dinámico a get_prompt
@@ -37,6 +38,7 @@ class AgentService:
 
         workflow.add_node("agent", self._call_agent)
         workflow.add_node("agent_router", self._agent_router) # Registrado como nodo para soportar Command
+        workflow.add_node("task_planner", self._task_planner)  # Planificador inicial por turno
         
         # Resiliencia Externa: ToolNode reintentará 3 veces ante caídas de red o API
         tool_retry_policy = RetryPolicy(max_attempts=3, backoff_factor=1.5, jitter=True)
@@ -49,7 +51,8 @@ class AgentService:
         workflow.add_node("cleanup_rag_memory", self._cleanup_rag_memory)
         workflow.add_node("summarize_conversation", self._summarize_conversation)
 
-        workflow.add_edge(START, "agent")
+        workflow.add_edge(START, "task_planner")
+        workflow.add_edge("task_planner", "agent")
         
         # El agente siempre pasa por el router (ahora un nodo) para decidir el siguiente paso
         workflow.add_edge("agent", "agent_router")
@@ -86,6 +89,50 @@ class AgentService:
 
         # Para que el estado no acumule el mensaje temporal, solo devolvemos la respuesta de la AI
         return {"messages": [response]}
+
+    async def _task_planner(self, state: GraphState):
+        """Analiza el mensaje del usuario y genera un plan estructurado de herramientas a ejecutar."""
+        messages = state["messages"]
+        
+        # Obtener el último mensaje real del usuario
+        user_msgs = [m for m in messages if m.type == "human" and not str(m.content).startswith("[SISTEMA]")]
+        last_user_msg = user_msgs[-1].content if user_msgs else ""
+        
+        # Construir contexto previo para referencias anafóricas ("guarda lo anterior", "busca eso")
+        context_parts = []
+        
+        # 1. Si hay un resumen de la conversación, incluirlo
+        for msg in messages:
+            if isinstance(msg, SystemMessage) and str(msg.content).startswith("Resumen de la conversación hasta ahora:"):
+                context_parts.append(f"Resumen de conversación previa: {msg.content}")
+                break
+        
+        # 2. Si no hay resumen, incluir los últimos 2 mensajes del agente como contexto
+        if not context_parts:
+            ai_history = [m for m in messages if m.type == "ai" and not m.tool_calls and m.content]
+            recent_ai = ai_history[-2:]
+            if recent_ai:
+                context_parts.append("Respuestas anteriores del agente:")
+                for m in recent_ai:
+                    preview = str(m.content)[:300]
+                    context_parts.append(f"  - {preview}")
+        
+        context_str = "\n".join(context_parts) if context_parts else "No hay conversación previa."
+
+        try:
+            prompt_text = self.prompt_loader.get_prompt(
+                "task_planner.jinja2",
+                version=state.get("prompt_version", "rag_v3"),
+                context_str=context_str,
+                user_message=last_user_msg,
+            )
+            result = await self.task_planner_model.ainvoke([HumanMessage(content=prompt_text)])
+            plan_steps = [{"tool": step.tool, "reason": step.reason, "done": False} for step in result.steps if step.tool]
+            logger.info(f"Task plan generated: {[s['tool'] for s in plan_steps]}")
+            return {"task_plan": plan_steps}
+        except Exception as e:
+            logger.warning(f"Task planner failed: {e}. Proceeding without a plan.")
+            return {"task_plan": []}
 
     def _agent_router(self, state: GraphState) -> Command:
         messages = state["messages"]
@@ -346,78 +393,106 @@ class AgentService:
         return "grade_task_completion"
 
     async def _grade_task_completion(self, state: GraphState):
-        """Verifica si el agente completó todas las peticiones basándose ÚNICAMENTE en las herramientas usadas."""
+        """Verifica si el agente completó todas las tareas del plan usando el LLM como juez con contexto rico."""
+        task_plan = state.get("task_plan") or []
         user_msgs = [m.content for m in state["messages"] if m.type == "human" and not str(m.content).startswith("[SISTEMA]")]
         last_user_msg = user_msgs[-1] if user_msgs else ""
         agent_msg = state["messages"][-1].content
 
-        # Recolectar el historial de herramientas usadas
-        used_tools = set()
-        for msg in state["messages"]:
-            if msg.type == "tool":
-                used_tools.add(msg.name)
-
-        if "Lo siento, no pude obtener datos" in agent_msg or "La búsqueda no arrojó resultados" in agent_msg:
+        # Si no hay plan (query conversacional) → no hay nada que auditar
+        if not task_plan:
             return {"messages": []}
 
-        # --- Lógica Determinista Primero (evita falsos negativos del LLM auditor) ---
-        # Detectar si el usuario pidió explícitamente guardar
-        save_keywords = ["guardar", "crear nota", "escribir en un documento", "resumir y guardar", "anota", "guarda esto"]
-        user_asked_save = any(kw in last_user_msg.lower() for kw in save_keywords)
+        # Mapear tools ejecutadas UNICAMENTE en este turno (posteriores al último HumanMessage)
+        used_tools: dict[str, str] = {}  # tool_name -> snippet
+        
+        # Encontrar el índice del último mensaje humano del usuario
+        last_human_idx = -1
+        for i, msg in enumerate(state["messages"]):
+            if msg.type == "human" and not str(msg.content).startswith("[SISTEMA]"):
+                last_human_idx = i
+                
+        # Solo recolectar herramientas que aparezcan DESPUÉS de ese mensaje
+        current_turn_msgs = state["messages"][last_human_idx + 1:] if last_human_idx != -1 else state["messages"]
+        
+        for msg in current_turn_msgs:
+            if msg.type == "tool" and msg.name not in used_tools:
+                snippet = str(msg.content)[:100].replace("\n", " ")
+                used_tools[msg.name] = snippet
 
-        # Detectar si el usuario pidió explícitamente buscar en internet
-        web_keywords = ["busca en internet", "busca en la web", "googlea", "noticias de hoy", "información actualizada online", "buscar en internet"]
-        user_asked_web = any(kw in last_user_msg.lower() for kw in web_keywords)
-
-        # Caso 1: Pidió guardar y no usó la herramienta → fallo claro
-        if user_asked_save and "save_note_to_knowledge_base" not in used_tools:
+        # --- AUDITORIA ESTRICTA: ¿El agente dijo "No encontré" sin siquiera USAR la herramienta de búsqueda? ---
+        # Si el agente dice que no encontró nada pero el plan pedía búsqueda y NO hay ToolMessages en este turno...
+        agent_says_not_found = "Lo siento, no pude obtener datos" in agent_msg or "La búsqueda no arrojó resultados" in agent_msg or "No encontré información" in agent_msg
+        
+        needed_tools = [s["tool"] for s in task_plan if s["tool"] in [_RETRIEVER_TOOL_NAME, "web_search"]]
+        if agent_says_not_found and needed_tools and not any(t in used_tools for t in needed_tools):
             retries = state.get("generate_retry_count", 0)
-            if retries >= MAX_RETRIES:
-                return {"messages": [], "generate_retry_count": retries}
-            return {
-                "generate_retry_count": retries + 1,
-                "messages": [HumanMessage(content="[SISTEMA]: Aún no has completado la solicitud del usuario (o alucinaste haberlo hecho sin usar la herramienta). Tarea pendiente detectada por el auditor: Falta usar save_note_to_knowledge_base. DEBES usar la herramienta correspondiente AHORA MISMO y no inventar que ya lo hiciste.")]
-            }
+            if retries < MAX_RETRIES:
+                logger.warning(f"Auditor: El agente declinó sin intentar las herramientas planificadas ({needed_tools}). Nudge.")
+                return {
+                    "generate_retry_count": retries + 1,
+                    "messages": [HumanMessage(content=f"[SISTEMA]: Has dicho que no encontraste información, pero el plan de ejecución indicaba usar {needed_tools} y NO las has usado en este turno. DEBES usar las herramientas correspondientes antes de rendirte.")]
+                }
 
-        # Caso 2: Pidió buscar en web y no usó la herramienta → fallo claro
-        if user_asked_web and "web_search" not in used_tools:
-            retries = state.get("generate_retry_count", 0)
-            if retries >= MAX_RETRIES:
-                return {"messages": [], "generate_retry_count": retries}
-            return {
-                "generate_retry_count": retries + 1,
-                "messages": [HumanMessage(content="[SISTEMA]: Aún no has completado la solicitud del usuario. Tarea pendiente: Falta usar web_search. DEBES usar la herramienta AHORA MISMO.")]
-            }
+        # Marcar steps como completados
+        for step in task_plan:
+            if step["tool"] in used_tools:
+                step["done"] = True
 
-        # Caso 3: Si usó alguna herramienta y no hay tareas pendientes → todo OK
-        if used_tools:
-            return {"messages": []}
+        pending_steps = [s for s in task_plan if not s["done"]]
+        
+        # Si todo está completado → OK
+        if not pending_steps:
+            return {"messages": [], "task_plan": task_plan}  # Actualizar plan con done=True
 
-        # Caso 4 (raro): No usó ninguna herramienta → delegar al LLM solo en este caso extremo
-        prompt = f"""
-        Eres un auditor estricto. El agente NO utilizó ninguna herramienta para responder al usuario.
+        # Hay pasos pendientes — cargar prompt del auditor desde template externo
+        plan_str = "\n".join(
+            [f"  [{'DONE' if s['done'] else 'PENDING'}] {s['tool']}: {s['reason']}" for s in task_plan]
+        )
+        tools_context = "\n".join(
+            [f"  - {name} → '{snippet}'" for name, snippet in used_tools.items()]
+        ) or "  Ninguna herramienta fue ejecutada."
+        pending_str = ", ".join([s["tool"] for s in pending_steps])
 
-        Instrucción del usuario: {last_user_msg}
-        Respuesta del Agente: {agent_msg}
-        Herramientas Ejecutadas: Ninguna
+        try:
+            audit_prompt = self.prompt_loader.get_prompt(
+                "grade_task_completion.jinja2",
+                version=state.get("prompt_version", "rag_v3"),
+                user_message=last_user_msg,
+                plan_str=plan_str,
+                tools_context=tools_context,
+                agent_response=str(agent_msg)[:300],
+                pending_str=pending_str,
+            )
+        except FileNotFoundError:
+            # Fallback inline por si el template no existe en la versión del prompt
+            audit_prompt = (
+                f"El usuario pidió: {last_user_msg}\n"
+                f"Plan: {plan_str}\n"
+                f"Tools usadas: {tools_context}\n"
+                f"Pasos pendientes: {pending_str}\n"
+                "\u00bfFalta ejecutar alguno? CALIFICA 'no' y describe la herramienta faltante. Si todo está bien o no se pudo, CALIFICA 'yes'."
+            )
 
-        ¿La pregunta del usuario era conversacional (saludo, agradecimiento, etc.) que NO requería herramientas?
-        Si es conversacional: CALIFICA 'yes' y missing_action = 'N/A'.
-        Si requería herramientas y el agente no las usó: CALIFICA 'no' y describe la acción faltante.
-        """
-
-        response = await self.checker_completion_model.ainvoke(prompt)
+        retries = state.get("generate_retry_count", 0)
+        try:
+            response = await self.checker_completion_model.ainvoke(audit_prompt)
+        except Exception as e:
+            logger.warning(f"Grade task completion LLM failed: {e}. Approving task.")
+            return {"messages": [], "task_plan": task_plan}
 
         if response.binary_score == "no":
-            retries = state.get("generate_retry_count", 0)
             if retries >= MAX_RETRIES:
-                return {"messages": [], "generate_retry_count": retries}
+                logger.warning(f"MAX_RETRIES ({MAX_RETRIES}) reached in grade_task_completion. Giving up.")
+                return {"messages": [], "generate_retry_count": retries, "task_plan": task_plan}
+            logger.info(f"Task incomplete: {response.missing_action}. Retry {retries + 1}/{MAX_RETRIES}.")
             return {
                 "generate_retry_count": retries + 1,
-                "messages": [HumanMessage(content=f"[SISTEMA]: Aún no has completado la solicitud del usuario (o alucinaste haberlo hecho sin usar la herramienta). Tarea pendiente detectada por el auditor: {response.missing_action}. DEBES usar la herramienta correspondiente AHORA MISMO y no inventar que ya lo hiciste.")]
+                "task_plan": task_plan,
+                "messages": [HumanMessage(content=f"[SISTEMA]: Aún no has completado la solicitud del usuario. Tarea pendiente: {response.missing_action}. DEBES usar la herramienta correspondiente AHORA MISMO.")]
             }
 
-        return {"messages": []}
+        return {"messages": [], "task_plan": task_plan}
 
     def _grade_task_completion_router(self, state: GraphState) -> str:
         last_msg = state["messages"][-1]
@@ -520,7 +595,8 @@ class AgentService:
             "retrieve_retry_count": 0,
             "generate_retry_count": 0,
             "docs_parse_retries": 0,
-            "hallucinations_parse_retries": 0
+            "hallucinations_parse_retries": 0,
+            "task_plan": None,  # Se genera en el nodo task_planner al inicio de cada turno
         }
 
         return await self.graph.ainvoke(input_message, config=config)
@@ -544,7 +620,8 @@ class AgentService:
             "retrieve_retry_count": 0,
             "generate_retry_count": 0,
             "docs_parse_retries": 0,
-            "hallucinations_parse_retries": 0
+            "hallucinations_parse_retries": 0,
+            "task_plan": None,  # Se genera en el nodo task_planner al inicio de cada turno
         }
 
         # version="v2" es el estándar actual recomendado por LangChain para eventos

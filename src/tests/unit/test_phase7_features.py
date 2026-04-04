@@ -125,6 +125,6 @@ def test_agentic_chunker_removes_unnecessary_metadata():
 
     assert len(docs) == 1
     meta = docs[0].metadata
-    assert "chunk_title" not in meta
-    assert "chunk_summary" not in meta
+    assert "chunk_title" in meta
+    assert "chunk_summary" in meta
     assert meta["chunk_type"] == "agentic"

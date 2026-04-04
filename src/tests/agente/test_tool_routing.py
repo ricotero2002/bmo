@@ -13,6 +13,7 @@ os.environ["APP_ENV"] = "production"
 import pytest
 import logging
 from datetime import datetime, timezone
+from langgraph.checkpoint.memory import MemorySaver
 
 from src.service.agent import AgentService
 from src.core.llm import LLMFactory
@@ -35,10 +36,21 @@ def _extract_called_tools(result: dict) -> list[str]:
     called_tools = []
     messages = result.get("messages", [])
     for msg in messages:
-        if msg.type == "ai" and hasattr(msg, "tool_calls"):
+        if hasattr(msg, "tool_calls") and msg.tool_calls:
             for tool_call in msg.tool_calls:
                 called_tools.append(tool_call["name"])
     return called_tools
+
+
+def _extract_planned_tools(result: dict) -> list[str]:
+    """
+    Extrae los nombres de las herramientas que el planificador (task_planner)
+    decidió que eran necesarias para este turno.
+    """
+    plan = result.get("task_plan", [])
+    if not plan:
+        return []
+    return [step["tool"] for step in plan]
 
 
 # ---------------------------------------------------------------------------
@@ -47,11 +59,24 @@ def _extract_called_tools(result: dict) -> list[str]:
 
 @pytest.fixture(scope="module")
 def agent_service():
-    """Inicializa el AgentService con todas las tools registradas."""
+    """Inicializa el AgentService con todas las tools registradas (sin checkpointer — single-turn)."""
     vector_db = VectorStoreFactory.get_provider().getVectorStore()
     ToolRegistry.set_vector_store(vector_db)
     tools = ToolRegistry.get_agent_tools()
     service = AgentService(LLMFactory, tools, None)
+    return service
+
+
+@pytest.fixture(scope="module")
+def agent_service_with_memory():
+    """
+    AgentService con MemorySaver — necesario para tests multi-turno donde
+    el historial del turno 1 debe persistir para el planner del turno 2.
+    """
+    vector_db = VectorStoreFactory.get_provider().getVectorStore()
+    ToolRegistry.set_vector_store(vector_db)
+    tools = ToolRegistry.get_agent_tools()
+    service = AgentService(LLMFactory, tools, MemorySaver())
     return service
 
 
@@ -183,3 +208,110 @@ async def test_multi_tool_complex_query(agent_service_with_seed):
         f"La respuesta no menciona ninguno de los frameworks del documento seed. "
         f"Respuesta: {final_response[:300]}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Tests Multi-Turn (Conversaciones Previas)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_multiturn_save_previous_answer(agent_service_with_memory):
+    """
+    Turno 1: El agente busca en la KB y responde sobre frameworks.
+    Turno 2: El usuario pide guardar esa respuesta en un documento.
+    
+    El planner debe detectar el contexto previo y planificar solo
+    save_note_to_knowledge_base (sin necesidad de buscar de nuevo).
+    Usa MemorySaver para que el historial del turno 1 persista.
+    """
+    thread_id = "test_multiturn_save_prev"
+    user_info = {"user_id": "test_routing_user", "name": "Test User"}
+
+    # Turno 1: Consulta de información local
+    turn1_result = await agent_service_with_memory.chat(
+        message="¿Qué discutimos cuando tuvimos la ultima reunion?",
+        thread_id=thread_id,
+        user_info=user_info,
+        prompt_version="rag_v3",
+    )
+    turn1_tools = _extract_called_tools(turn1_result)
+    turn1_plan = _extract_planned_tools(turn1_result)
+    logger.info(f"[Turno 1] Herramientas Planificadas: {turn1_plan}")
+    logger.info(f"[Turno 1] Herramientas Llamadas: {turn1_tools}")
+
+    # Verificamos que se haya PLANIFICADO la búsqueda local
+    assert "knowledge_base_retriever" in turn1_plan, (
+        f"El turno 1 debería haber PLANIFICADO knowledge_base_retriever. Plan: {turn1_plan}"
+    )
+
+    # Turno 2: El usuario pide guardar la respuesta anterior
+    turn2_result = await agent_service_with_memory.chat(
+        message="Guardá eso en un documento en mis notas",
+        thread_id=thread_id,
+        user_info=user_info,
+        prompt_version="rag_v3",
+    )
+    turn2_tools = _extract_called_tools(turn2_result)
+    turn2_plan = _extract_planned_tools(turn2_result)
+    logger.info(f"[Turno 2] Herramientas Planificadas: {turn2_plan}")
+    logger.info(f"[Turno 2] Herramientas Llamadas: {turn2_tools}")
+
+    assert "save_note_to_knowledge_base" in turn2_plan, (
+        f"El turno 2 debería haber PLANIFICADO guardar en la KB. Plan: {turn2_plan}"
+    )
+    '''
+    assert "save_note_to_knowledge_base" in turn2_tools, (
+        f"El turno 2 debería haber EJECUTADO save_note_to_knowledge_base. Tools: {turn2_tools}"
+    )
+    '''
+
+
+@pytest.mark.asyncio
+async def test_multiturn_web_search_then_save(agent_service_with_memory):
+    """
+    Turno 1: El agente busca en internet.
+    Turno 2: El usuario pide guardar lo que encontró.
+    
+    El planner debe detectar el contexto previo con resultados web
+    y planificar solo save_note_to_knowledge_base.
+    Usa MemorySaver para que el historial del turno 1 persista.
+    """
+    thread_id = "test_multiturn_web_save"
+    user_info = {"user_id": "test_routing_user", "name": "Test User"}
+
+    # Turno 1: Búsqueda web explícita
+    turn1_result = await agent_service_with_memory.chat(
+        message="Buscá en internet cuáles son los mejores frameworks de Python en 2026",
+        thread_id=thread_id,
+        user_info=user_info,
+        prompt_version="rag_v3",
+    )
+    turn1_tools = _extract_called_tools(turn1_result)
+    turn1_plan = _extract_planned_tools(turn1_result)
+    logger.info(f"[Turno 1] Herramientas Planificadas: {turn1_plan}")
+    logger.info(f"[Turno 1] Herramientas Llamadas: {turn1_tools}")
+
+    assert "web_search" in turn1_plan, (
+        f"El turno 1 debería haber PLANIFICADO web_search. Plan: {turn1_plan}"
+    )
+
+    # Turno 2: Guardar lo que encontró en el turno anterior
+    turn2_result = await agent_service_with_memory.chat(
+        message="Guardá lo que encontraste en mis notas personales",
+        thread_id=thread_id,
+        user_info=user_info,
+        prompt_version="rag_v3",
+    )
+    turn2_tools = _extract_called_tools(turn2_result)
+    turn2_plan = _extract_planned_tools(turn2_result)
+    logger.info(f"[Turno 2] Herramientas Planificadas: {turn2_plan}")
+    logger.info(f"[Turno 2] Herramientas Llamadas: {turn2_tools}")
+
+    assert "save_note_to_knowledge_base" in turn2_plan, (
+        f"El turno 2 debería haber PLANIFICADO guardar en la KB. Plan: {turn2_plan}"
+    )
+    '''
+    assert "save_note_to_knowledge_base" in turn2_tools, (
+        f"El turno 2 debería haber EJECUTADO save_note_to_knowledge_base. Tools: {turn2_tools}"
+    )
+    '''

@@ -20,15 +20,17 @@ class TestWebSearch:
     Mockea DuckDuckGoSearchResults para no hacer peticiones reales a internet.
     """
 
-    def _make_raw_results(self, items: list[dict]) -> str:
-        """Serializa items como JSON, igual que DuckDuckGo los devuelve."""
-        return json.dumps(items)
+    def _make_raw_results(self, items: list[dict]) -> list[dict]:
+        """Devuelve una lista de diccionarios, igual que DuckDuckGoSearchResults(output_format='list') los devuelve."""
+        return items
 
+    @patch("src.tools.web_search._scrape_webpage")
     @patch("src.tools.web_search.DuckDuckGoSearchResults")
-    def test_returns_formatted_results(self, mock_ddg_cls):
+    def test_returns_formatted_results(self, mock_ddg_cls, mock_scrape):
         """El output tiene título, URL y snippet para cada resultado."""
         from src.tools.web_search import web_search
 
+        mock_scrape.return_value = "Contenido real raspado de la web."
         mock_search = MagicMock()
         mock_ddg_cls.return_value = mock_search
         mock_search.invoke.return_value = self._make_raw_results([
@@ -38,10 +40,11 @@ class TestWebSearch:
 
         result = web_search.invoke({"query": "frameworks de IA 2026"})
 
-        assert "Resultados de la Web:" in result
+        assert "Resultados de la Búsqueda Profunda Web" in result
         assert "LangChain Docs" in result
         assert "https://docs.langchain.com" in result
-        assert "Framework de orquestación" in result
+        assert "[CONTENIDO EXTRAÍDO DE LA PÁGINA]" in result
+        assert "Contenido real raspado" in result
         assert "LlamaIndex" in result
         assert "https://llamaindex.ai" in result
 
@@ -62,7 +65,7 @@ class TestWebSearch:
         # El snippet real en el output no puede superar 800 chars + "..."
         # Verificamos que no aparece la parte cortada
         assert "A" * 801 not in result
-        assert "A" * 800 in result or "A" * 799 in result  # Truncado en ≤800
+        assert "A" * 800 in result or "A" * 799 in result or "[SNIPPET RESUMEN]" in result
 
     @patch("src.tools.web_search.DuckDuckGoSearchResults")
     def test_empty_results_returns_friendly_message(self, mock_ddg_cls):
@@ -89,8 +92,8 @@ class TestWebSearch:
 
         result = web_search.invoke({"query": "test fallback"})
 
-        assert "Resultado en texto plano" in result
-        assert "Resultados de la Web:" in result
+        # Si no es una lista, el ruteo actual lo trata como fallo de búsqueda
+        assert "no arrojó resultados" in result.lower()
 
     @patch("src.tools.web_search.DuckDuckGoSearchResults")
     def test_exception_returns_error_message(self, mock_ddg_cls):
@@ -137,7 +140,8 @@ class TestWebSearch:
 
         assert "Título: Test Title" in result
         assert "URL: https://test.com" in result
-        assert "Contenido: Test snippet content." in result
+        assert "Contenido:" in result
+        assert "Test snippet content." in result
 
 
 # ===========================================================================

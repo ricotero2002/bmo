@@ -88,6 +88,7 @@ def process_document_task(self, doc_id: str, filename: str, user_id: Optional[st
         logger.info(f"Creando documento")
         status_provider.update_status(job_uuid, "documenting")
         document = extraction_service.create_document(text, filename, document_date=document_date)
+        
         document.metadata.update({
             "source": doc_id,
             "user_id": user_id,

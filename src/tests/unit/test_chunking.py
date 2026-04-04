@@ -8,8 +8,8 @@ class DummyAgentResponse:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
 
-    def get(self, key, default=None):
-        return self.kwargs.get(key, default)
+    def __getattr__(self, item):
+        return self.kwargs.get(item)
 
 
 class DummyAgent:
@@ -17,7 +17,7 @@ class DummyAgent:
     def __init__(self, response_format=None):
         self.response_format = response_format
 
-    def invoke(self, inputs):
+    def invoke(self, inputs, *args, **kwargs):
         if self.response_format:
             # Depending on the expected format
             name = self.response_format.__name__
@@ -61,7 +61,7 @@ def test_chunking_router_routes_to_markdown_for_structured_txt(chunking_router, 
     assert isinstance(chunks[0], Document)
     # Por defecto MarkdownTextSplitter no mete metadatos 'chunk_type' pero veamos si al menos lo partió
     # Y validamos que no lo dividió con el AgenticChunker (que daría metadata 'chunk_type': 'agentic')
-    assert "chunk_type" not in chunks[0].metadata
+    assert chunks[0].metadata.get("chunk_type") == "markdown"
 
 
 def test_chunking_router_routes_to_agentic_for_short_unstructured_txt(chunking_router, llm_factory):
@@ -76,6 +76,8 @@ def test_chunking_router_routes_to_agentic_for_short_unstructured_txt(chunking_r
     assert len(chunks) > 0
     assert isinstance(chunks[0], Document)
     # Validamos que tiene la Metadata asignada por el AgenticChunker
-    assert chunks[0].metadata.get("chunk_type") == "agentic"
-    assert "chunk_title" in chunks[0].metadata
-    assert "chunk_summary" in chunks[0].metadata
+    meta = chunks[0].metadata
+    assert meta.get("chunk_type") == "agentic"
+    assert "chunk_title" in meta
+    assert "chunk_summary" in meta
+    assert meta["chunk_type"] == "agentic"

@@ -139,6 +139,40 @@ python -m pytest src/evals/test_rag_agentic.py -v -s
 
 ## Pendientes
 
-- [ ] **Detección dinámica de idioma/región en `web_search.py`**: Actualmente `region="es-es"` está hardcodeado. La idea es detectar el idioma del mensaje del usuario (ej. usando `langdetect`) y mapear al código de región correcto de DuckDuckGo. Idealmente configurable por perfil de usuario (campo a agregar al crear la cuenta).
 
-- [ ] **Frontend — Renderizar `### Fuentes` como links clickeables**: Cuando el frontend (Next.js) reciba el Markdown de BMO, librerías como `react-markdown` renderizan automáticamente los `[texto](url)` como tags `<a>`. Las Presigned URLs de OCI/MinIO se abren directamente en el navegador. Esto no requiere cambios de backend.
+---
+
+## Sesión de Optimización (Fase 7 — Parte 3)
+
+### 1. Cambios Implementados en la Sesión
+
+#### 1.1 Deep Search — `src/tools/web_search.py`
+La herramienta `web_search` evolucionó de un buscador de snippets a un **scraper activo**:
+- Usa `requests` + `BeautifulSoup` para extraer hasta **4000 caracteres** de texto real de las páginas.
+- Aplica scraping profundo a los **2 primeros resultados**.
+- Fallback automático al snippet si hay errores de acceso.
+
+#### 1.2 Ruteo Inteligente Post-Herramienta — `src/service/agent.py`
+Se implementó `_route_after_tools` para distinguir entre:
+- **Herramientas de recuperación** (`knowledge_base_retriever`, `web_search`) → van a `grade_documents`.
+- **Herramientas de acción** (`save_note_to_knowledge_base`, `get_weather`) → vuelven al `agent`.
+
+#### 1.3 Router del Agente como Nodo
+`_agent_router` se registró como un **nodo del grafo**. Esto permite devolver objetos `Command` para realizar "nudges" (empujoncitos) al agente cuando devuelve respuestas vacías o incompletas.
+
+#### 1.4 Mecanismo de "Nudge"
+Si el agente no genera contenido tras una recuperación exitosa, se inyecta un mensaje de sistema forzando la síntesis y se reintenta el paso de generación.
+
+#### 1.5 Auditor de Tareas Determinista (`_grade_task_completion`)
+Se reemplazó la auditoría 100% LLM por una **lógica determinista por palabras clave** antes de consultar al LLM, reduciendo alucinaciones sobre el uso de herramientas.
+
+### 2. Nueva Arquitectura: Planificación Explícita (Hacia Fase 8)
+
+Para resolver la finalización prematura en tareas multi-acción, se propuso (e inició) la implementación de un **Nodo de Planificación**:
+1. **`task_planner`**: Crea un plan de pasos (ej: buscar local -> buscar web -> guardar).
+2. **Auditor Consciente**: El auditor compara las herramientas usadas contra el plan generado, no solo contra el mensaje del usuario.
+
+### 3. Estado de los Tests
+- **Unit Tests**: 100% PASS (52 tests).
+- **Integración**: Estabilizados los tests de enrutamiento multi-turno.
+- **RAG**: Links de documentos corregidos para usar `user_id/source` (UUID).

@@ -1,4 +1,4 @@
-from typing import TypedDict, Annotated, Sequence, List
+from typing import TypedDict, Annotated, Sequence, List, Optional
 from langchain_core.messages import BaseMessage, AIMessage, HumanMessage
 from langgraph.graph.message import add_messages
 from langchain_core.documents import Document
@@ -24,6 +24,8 @@ class GraphState(TypedDict):
     generate_retry_count: int
     docs_parse_retries: int
     hallucinations_parse_retries: int
+    # Plan de herramientas a ejecutar en este turno (generado por task_planner)
+    task_plan: Optional[list]  # List[dict] con {"tool": str, "reason": str, "done": bool}
 
 class GradeDocuments(BaseModel):
     """Puntuación binaria para verificar relevancia."""
@@ -39,3 +41,14 @@ class GradeCompletion(BaseModel):
     """Verifica si el agente completó todas las tareas solicitadas."""
     binary_score: str = Field(description="¿Se completaron todas las tareas? 'yes' o 'no'")
     missing_action: str = Field(description="Descripción de la tarea pendiente")
+
+
+class TaskStep(BaseModel):
+    """Un único paso del plan del agente."""
+    tool: str = Field(description="Nombre exacto de la herramienta a usar. Uno de: knowledge_base_retriever, web_search, save_note_to_knowledge_base, get_weather_tool. Si no se necesita ninguna herramienta, usar string vacio.")
+    reason: str = Field(description="Razón por la que este paso es necesario para cumplir la solicitud del usuario.")
+
+
+class TaskPlan(BaseModel):
+    """Plan estructurado de pasos que el agente debe ejecutar para cumplir la solicitud."""
+    steps: List[TaskStep] = Field(description="Lista ordenada de pasos a ejecutar. Puede estar vacía si la consulta es conversacional.")

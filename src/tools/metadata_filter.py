@@ -247,10 +247,14 @@ def knowledge_base_retriever(
         processed_blobs = set() # Para evitar duplicados en expansión
 
         for doc in docs:
-            source = doc.metadata.get('source')
+            # Recuperación de metadatos
+            source = doc.metadata.get('source', 'desconocido')
+            user_id_meta = doc.metadata.get('user_id')
+            filename = doc.metadata.get('filename', source)
             idx = doc.metadata.get('chunk_index')
             chunk_type = doc.metadata.get('chunk_type', 'markdown')
-            
+            doc_type_str = doc.metadata.get('doc_type', 'general')
+
             # ID único para este bloque de contexto
             blob_id = f"{source}_{idx}"
             if blob_id in processed_blobs:
@@ -263,19 +267,24 @@ def knowledge_base_retriever(
             else:
                 content = doc.page_content
 
-            # Generar Presigned URL para que el LLM pueda incluirla en ### Fuentes
+            # Generar Presigned URL (Jerarquía: user_id/source)
             try:
-                presigned_url = StorageFactory.get_storage().get_file_url(object_name=source)
+                # Si el source ya trae el slash (path completo), lo usamos. 
+                # Si no, y tenemos user_id (del context o meta), lo prefijamos.
+                storage_path = source
+                current_user = user_id or user_id_meta
+                if current_user and "/" not in source:
+                    storage_path = f"{current_user}/{source}"
+                
+                presigned_url = StorageFactory.get_storage().get_file_url(object_name=storage_path)
             except Exception as url_err:
                 logger.error(f"Error generando presigned URL para '{source}': {url_err}")
                 presigned_url = "#"
 
-            doc_type_str = doc.metadata.get('doc_type', 'general')
             final_results.append(
-                f"[Fuente: {source or 'desconocida'} | URL: {presigned_url} | Tipo: {doc_type_str}]\n{content}"
+                f"[Fuente: {filename} | URL: {presigned_url} | Tipo: {doc_type_str}]\n{content}"
             )
             processed_blobs.add(blob_id)
-
 
         return "\n\n---\n\n".join(final_results)
 
