@@ -29,7 +29,7 @@ async def test_web_search_live_api():
     logger.info("-" * 40)
     
     # Verificaciones básicas de una respuesta exitosa
-    assert "Resultados de la Web:" in result
+    assert any(term in result for term in ["Resultados de la Web:", "Resultados de la Búsqueda Profunda Web:"])
     assert "Título:" in result
     assert "URL:" in result
     assert "http" in result  # Debe haber links reales

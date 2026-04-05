@@ -28,6 +28,8 @@ Necesitamos una tabla para almacenar las interacciones y el feedback.
 
     mas que retrieved_context deberia indicar que tools se usaron, que se trajo (web o source), porque quizas el problema es que no guardno nada o cosas asi, agregar que cuando use la tool guardar devuelva una notificacion o algo asi indicando el id del nuevo archivo y nombre junto ocn un seguimiento del mismo.
 
+    Para esto usar alembic
+
 **Paso 2: Endpoint de Feedback en la API (FastAPI)**
 * Crear un endpoint `POST /api/feedback` que reciba el `thread_id`, el ID del mensaje específico y el `score` (con la corrección opcional).
 * Este endpoint guardará el registro en la tabla `chat_feedback` utilizando SQLAlchemy.
@@ -37,6 +39,9 @@ Necesitamos una tabla para almacenar las interacciones y el feedback.
 * Si el usuario presiona 👎, mostrar un pequeño modal: "¡Ups! ¿Cómo debería haber respondido BMO? Falto que realizara alguna accion?".
 * Enviar esta información al nuevo endpoint `/api/feedback`.
 
+Tambien hay que agregar un modal en el llm que cuando se llame al guardar documento se le muestre su id para que el pueda ir siguiendo la subida del archivo.
+Aparte ahora como hay una planificacion estaria bueno poder mostrarsela al usuario junto con el probreso de la misma, que se pueda apliar o mostrar el actual, arriba de los mensajes etereos.
+
 #### Frente 2: Testing Automatizado con Golden Datasets (LLM-as-a-Judge)
 
 Aquí usaremos los datos recolectados (y los generados sintéticamente) para asegurar que el agente no empeore con futuras actualizaciones de código o prompts.
@@ -44,6 +49,8 @@ Aquí usaremos los datos recolectados (y los generados sintéticamente) para ase
 **Paso 1: Construcción del Golden Dataset**
 * Crear un script (ej. `scripts/export_golden_dataset.py`) que extraiga de la base de datos las filas de `chat_feedback` donde `score == 1` o donde exista un `user_correction` válido.
 * Guardar esto en un archivo (ej. `golden_dataset.json` o `.csv`) con la estructura: `[{"query": "...", "expected_response": "..."}]`. (Aprovechar el que ya existe tambien)
+Ademas hay que sumarle los dataset de /evals/golden_dataset_v2
+
 
 **Paso 2: Implementación de la Suite de Evaluación (Pytest + LangChain)**
 * Crear una suite `tests/evaluations/test_rag_quality.py`.
@@ -53,6 +60,9 @@ Aquí usaremos los datos recolectados (y los generados sintéticamente) para ase
 
 **Paso 3: Ejecución de Regresiones (CI/CD)**
 * Configurar tu pipeline (ej. GitHub Actions) para que corra este script de evaluación cada vez que modifiques los prompts (`prompts.py`), las herramientas o la lógica de ruteo en LangGraph.
+
+
+
 
 #### Frente 3: Telemetría, Costos y Pruebas de Estrés (Observabilidad)
 
