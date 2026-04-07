@@ -30,6 +30,7 @@ class LLMFactory:
                 model="gpt-4o-mini",
                 temperature=0,
                 openai_api_key=openai_api_key,
+                stream_options={"include_usage": True},
                 callbacks=callbacks
             )
         '''
@@ -44,18 +45,21 @@ class LLMFactory:
             model="gemini-2.5-flash",
             temperature=0,
             openai_api_key=gemini_api_key,
+            stream_options={"include_usage": True},
             callbacks=callbacks
         )
         fallback_model2 = ChatOpenAI(
             model="gemma-3-1b-it",
             temperature=0,
             openai_api_key=gemini_api_key,
+            stream_options={"include_usage": True},
             callbacks=callbacks
         )
         fallback_model3 = ChatOpenAI(
             model="gemini-1.5-pro",
             temperature=0,
             openai_api_key=gemini_api_key,
+            stream_options={"include_usage": True},
             callbacks=callbacks
         )
 

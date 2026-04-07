@@ -39,7 +39,7 @@ tracer = trace.get_tracer(__name__)
 MAIN_TOPIC = settings.KAFKA_RAW_DOCUMENTS_TOPIC
 DLT_TOPIC  = settings.KAFKA_DLT_TOPIC  # Dead Letter Topic
 MAX_CONSUMER_RETRIES = 3
-GROUP_ID = os.getenv("KAFKA_GROUP_ID", "document-ingestor-v3")
+GROUP_ID = os.getenv("KAFKA_GROUP_ID", "document-ingestor-v4")
 
 orchestrator = IngestionOrchestrator()
 

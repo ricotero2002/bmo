@@ -1,9 +1,10 @@
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
-from src.schemas.fastapi import QueryRequest, QueryResponse, AskRequest, DeleteRequest
+from src.schemas.fastapi import QueryRequest, QueryResponse, AskRequest, DeleteRequest, FeedbackRequest
 from src.api.dependencies import *
 from celery.result import AsyncResult
 from src.workers.celery_app import celery_app
+from langchain_core.messages import AIMessage
 import uuid
 from typing import Optional, List
 from starlette.background import BackgroundTask
@@ -17,11 +18,24 @@ router = APIRouter()
 async def health_check():
     return {"status": "ok", "message": "Personal AI Assistant API is running"}
 
+
+
+# --- EL ENDPOINT PROTEGIDO ---
+@router.get("/seguro")
+async def endpoint_protegido(user_payload: dict = Depends(verify_token)):
+    user_id = user_payload.get("sub")
+    # Si ves esto, significa que el token es 100% real y válido
+    return {
+        "mensaje": "¡Éxito! BMO te reconoce.",
+        "tu_id_auth0": user_id,
+        "payload_completo": user_payload
+    }
+
 @router.post("/ingest")
 async def ingest_document(
     file: UploadFile = File(...),
-    user_id: Optional[str] = None,
-    document_date: Optional[str] = None,
+    user_id: Optional[str] = Form(None),
+    document_date: Optional[str] = Form(None),
     orchestrator = Depends(get_orchestrator)
 ):
     """
@@ -54,8 +68,8 @@ async def ingest_document(
 @router.post("/ingest/batch")
 async def ingest_batch(
     files: List[UploadFile] = File(...),
-    user_id: Optional[str] = None,
-    document_date: Optional[str] = None,
+    user_id: Optional[str] = Form(None),
+    document_date: Optional[str] = Form(None),
     orchestrator = Depends(get_orchestrator)
 ):
     """
@@ -106,6 +120,76 @@ async def get_ingestion_status(
     except ValueError:
         return {"error": "Invalid UUID format", "status_code": 400}
 
+@router.get("/debug/document/{doc_id}/chunks")
+async def get_document_chunks(
+    doc_id: str,
+    db = Depends(get_vector_db),
+    record_manager = Depends(get_record_manager)
+):
+    """Lista los chunks insertados en la base Vectorial por doc_id"""
+    try:
+        # 1. Intentamos usar RecordManager para obtener IDs específicos si el db no tiene get() fácil
+        # Esto es vital para Pinecone (GeminiEmbedder falla con empty search "")
+        pinecone_ids = []
+        try:
+            pinecone_ids = record_manager.list_keys(group_ids=[doc_id])
+        except Exception as e:
+            print(f"RecordManager not available or failed: {e}")
+
+        # 2. Si tenemos IDs, los recuperamos directamente
+        if pinecone_ids:
+            chunks = []
+            # Pinecone VectorStore
+            if hasattr(db, "_index"):
+                response = db._index.fetch(ids=pinecone_ids)
+                vectors = getattr(response, "vectors", {})
+                for p_id in pinecone_ids:
+                    vector_data = vectors.get(p_id)
+                    if vector_data:
+                        metadata = getattr(vector_data, "metadata", {})
+                        chunks.append({
+                            "id": p_id,
+                            "page_content": metadata.get("text") or metadata.get("page_content") or "",
+                            "metadata": metadata
+                        })
+                return {"chunks": chunks, "total_chunks": len(chunks), "doc_id": doc_id}
+            
+            # Chroma or generic .get()
+            elif hasattr(db, "get"):
+                res = db.get(ids=pinecone_ids, include=["metadatas", "documents"])
+                docs = res.get("documents", [])
+                metas = res.get("metadatas", [])
+                for i in range(len(docs)):
+                    chunks.append({
+                        "id": pinecone_ids[i],
+                        "page_content": docs[i] if docs else "",
+                        "metadata": metas[i] if i < len(metas) else {}
+                    })
+                return {"chunks": chunks, "total_chunks": len(chunks), "doc_id": doc_id}
+
+        # 3. Fallback: Si NO tenemos IDs de RecordManager, intentamos el .get() directo por filtro (Chroma)
+        if hasattr(db, "_collection"):
+            res = db._collection.get(where={"doc_id": doc_id})
+            chunks = []
+            if res and "ids" in res:
+                for i in range(len(res["ids"])):
+                    chunks.append({
+                        "id": res["ids"][i],
+                        "page_content": res["documents"][i] if "documents" in res and res["documents"] else "",
+                        "metadata": res["metadatas"][i] if "metadatas" in res and res["metadatas"] else {}
+                    })
+            return {"chunks": chunks, "total_chunks": len(chunks), "doc_id": doc_id}
+
+        # 4. Si todo lo anterior falla, no hacemos similarity_search("") para evitar crash de Gemini
+        return {
+            "chunks": [],
+            "total_chunks": 0,
+            "doc_id": doc_id,
+            "message": "No se pudieron recuperar chunks. Use RecordManager IDs o Chroma."
+        }
+    except Exception as e:
+        return {"error": str(e), "status_code": 500}
+
 @router.post("/delete_file")
 async def delete_document(
     request: DeleteRequest,
@@ -143,22 +227,35 @@ async def query_rag(
     db = Depends(get_vector_db),
     embedder = Depends(get_embeddings)
 ):
+    import logging
+    from src.tools.metadata_filter import build_metadata_filter
+    logger = logging.getLogger(__name__)
+
     # 1. Recuperar contexto (db.similarity_search) con filtro de usuario
-    filter_opts = {}
-    if request.user_id:
-        filter_opts["user_id"] = request.user_id
+    filter_opts = build_metadata_filter(user_id=request.user_id)
         
-    results = db.similarity_search(
-        request.query, 
-        k=3,
-        filter=filter_opts if filter_opts else None
-    )
+    logger.info(f"[/query] Ejecutando búsqueda semántica: '{request.query}' (Filtros: {filter_opts})")
     
-    # Extraemos el contenido de los documentos encontrados
-    context = [doc.page_content for doc in results] if results else []
-    
-    # 2. Generar respuesta con LLM
-    return {"context": context}
+    try:
+        results = db.similarity_search(
+            request.query, 
+            k=3,
+            filter=filter_opts if filter_opts else None
+        )
+        
+        logger.info(f"[/query] Se encontraron {len(results)} documentos.")
+        for i, doc in enumerate(results):
+            logger.debug(f"[/query] Doc {i+1} Metadatos: {doc.metadata}")
+
+        # Extraemos el contenido de los documentos encontrados
+        context = [doc.page_content for doc in results] if results else []
+        
+        # 2. Generar respuesta con LLM
+        return {"context": context}
+    except Exception as e:
+        logger.error(f"[/query] Error en búsqueda semántica: {e}")
+        return {"context": [], "error": str(e)}
+
 
 @router.post("/ask")
 async def ask_agent(
@@ -379,3 +476,30 @@ def check_dlq_health():
             }
     except Exception as e:
         return {"error": str(e), "status_code": 500}
+
+@router.post("/feedback")
+async def receive_feedback(
+    request: FeedbackRequest,
+    chat_provider = Depends(get_chat_provider)
+):
+    """
+    Endpoint para recibir retroalimentación del usuario (Thumbs Up/Down).
+    Guarda en la base de datos la interacción y posible corrección.
+    """
+    try:
+        if not hasattr(chat_provider, "add_chat_feedback"):
+            raise HTTPException(status_code=500, detail="chat_provider missing add_chat_feedback")
+            
+        feedback_id = chat_provider.add_chat_feedback(
+            thread_id=request.thread_id,
+            score=request.score,
+            message_id=request.message_id,
+            user_prompt=request.user_prompt,
+            ai_response=request.ai_response,
+            tools_used=request.tools_used,
+            user_correction=request.user_correction
+        )
+        return {"status": "success", "feedback_id": str(feedback_id)}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Feedback error: {str(e)}")

@@ -70,6 +70,8 @@ def save_note_to_knowledge_base(
             key=doc_id,
             value=json.dumps(payload, ensure_ascii=False),
         )
+        # Flush para asegurar envío inmediato
+        producer.flush(1.0)
 
         logger.info(f"Nota '{title}' publicada en Kafka con doc_id={doc_id}")
         return (

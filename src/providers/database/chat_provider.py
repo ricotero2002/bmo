@@ -2,7 +2,7 @@ import uuid
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import sessionmaker
 from src.providers.database.core import get_engine
-from src.providers.database.models import Base, Chat, Message
+from src.providers.database.models import Base, Chat, Message, ChatFeedback
 
 class ChatProvider:
     def __init__(self):
@@ -86,5 +86,34 @@ class ChatProvider:
                     "created_at": m.created_at.isoformat()
                 } for m in messages
             ]
+        finally:
+            session.close()
+
+    def add_chat_feedback(
+        self,
+        thread_id: str,
+        score: int,
+        message_id: Optional[str] = None,
+        user_prompt: Optional[str] = None,
+        ai_response: Optional[str] = None,
+        tools_used: Optional[dict] = None,
+        user_correction: Optional[str] = None
+    ) -> uuid.UUID:
+        session = self.Session()
+        feedback_id = uuid.uuid4()
+        try:
+            feedback = ChatFeedback(
+                id=feedback_id,
+                thread_id=thread_id,
+                message_id=message_id,
+                user_prompt=user_prompt,
+                ai_response=ai_response,
+                tools_used=tools_used,
+                score=score,
+                user_correction=user_correction
+            )
+            session.add(feedback)
+            session.commit()
+            return feedback_id
         finally:
             session.close()

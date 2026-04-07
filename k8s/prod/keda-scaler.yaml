@@ -67,7 +67,7 @@ spec:
     metadata:
       # KEDA va a buscar esta variable en el bloque `env` de tu deployment
       bootstrapServersFromEnv: "KAFKA_BOOTSTRAP_SERVERS"
-      consumerGroup: "document-ingestor-v3"
+      consumerGroup: "document-ingestor-v4"
       topic: "raw-documents"
       lagThreshold: "5"
       offsetResetPolicy: "earliest"  # <-- VITAL PARA QUE ESCALE A CERO

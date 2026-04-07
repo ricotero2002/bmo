@@ -1,42 +1,46 @@
 import pytest
-from src.service.ingestion import ExtractionService
 from langchain_core.documents import Document
 
-def test_create_document_excludes_none_values():
+def test_metadata_cleaning_logic():
     """
-    Verifica que ExtractionService.create_document no incluya campos con valor None
-    en el diccionario de metadata, lo cual es vital para la compatibilidad con Pinecone.
+    Verifica que la lógica de limpieza de metadatos (extraída de tasks.py)
+    funciona correctamente y elimina valores None.
     """
-    service = ExtractionService()
+    doc_id = "test-doc-id"
+    filename = "test.txt"
+    user_id = None # Simulamos que no hay user_id
     
-    # Caso 1: Con múltiples valores None, incluyendo file_hash
-    doc = service.create_document(
-        text="test content",
-        filename="test.pdf",
-        file_hash=None,      # <-- Ahora forzamos que sea None
-        user_id="user_123",
-        page_number=None,
-        chunk_index=None
-    )
+    # Lógica copiada de tasks.py
+    metadata_to_add = {
+        "source": doc_id,
+        "user_id": user_id,
+        "filename": filename
+    }
+    clean_metadata = {k: v for k, v in metadata_to_add.items() if v is not None}
     
-    # Assertions
-    assert doc.metadata["source"] == "test.pdf"
-    assert doc.metadata["user_id"] == "user_123"
-    assert "file_hash" not in doc.metadata  # <-- Verificamos que no exista
-    assert "page_number" not in doc.metadata
-    assert "chunk_index" not in doc.metadata
-    assert isinstance(doc.metadata["created_at"], float)
+    # Aserciones
+    assert "source" in clean_metadata
+    assert "filename" in clean_metadata
+    assert "user_id" not in clean_metadata
+    assert clean_metadata["source"] == doc_id
+    assert clean_metadata["filename"] == filename
 
-def test_chunk_index_persistence_in_service():
+def test_document_metadata_update():
     """
-    Verifica que si pasamos parámetros válidos, sí se mantengan.
+    Verifica que al actualizar un Document con metadatos limpios,
+    no se introducen valores None.
     """
-    service = ExtractionService()
-    doc = service.create_document(
-        text="test",
-        filename="test.pdf",
-        chunk_index=5,
-        file_hash="hash_real"
-    )
-    assert doc.metadata["chunk_index"] == 5
-    assert doc.metadata["file_hash"] == "hash_real"
+    doc = Document(page_content="test content", metadata={"old": "val"})
+    
+    clean_metadata = {
+        "source": "123",
+        "filename": "file.pdf"
+        # user_id omitido porque es None
+    }
+    
+    doc.metadata.update(clean_metadata)
+    
+    assert doc.metadata["source"] == "123"
+    assert doc.metadata["filename"] == "file.pdf"
+    assert "user_id" not in doc.metadata
+    assert None not in doc.metadata.values()

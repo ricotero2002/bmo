@@ -1,4 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
+from typing import List, Union
+import json
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -82,5 +85,22 @@ class Settings(BaseSettings):
     # DynamoDB — Caché (reemplaza Redis) y Checkpointer (alternativa a RDS)
     AWS_DYNAMODB_TABLE_CACHE: str = "bmo-cache"
     AWS_DYNAMODB_TABLE_CHECKPOINTER: str = "bmo-checkpoints"
+
+    # Auth0
+    AUTH0_DOMAIN: str = "tu-tenant.us.auth0.com"
+    API_AUDIENCE: str = "https://bmo-api.tusitio.com"
+    ALGORITHMS: List[str] = ["RS256"]
+
+    @field_validator("ALGORITHMS", mode="before")
+    @classmethod
+    def parse_algorithms(cls, v: Union[str, List[str]]) -> List[str]:
+        if isinstance(v, str):
+            try:
+                # Try to parse as JSON list: ["RS256"]
+                return json.loads(v)
+            except (json.JSONDecodeError, TypeError):
+                # Fallback to comma-separated: RS256,HS256
+                return [s.strip() for s in v.split(",") if s.strip()]
+        return v
 
 settings = Settings()

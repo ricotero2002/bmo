@@ -89,23 +89,27 @@ def process_document_task(self, doc_id: str, filename: str, user_id: Optional[st
         status_provider.update_status(job_uuid, "documenting")
         document = extraction_service.create_document(text, filename, document_date=document_date)
         
-        document.metadata.update({
+        # --- Preparar Metadatos Limpios para Pinecone ---
+        # Pinecone RECHAZA valores 'null'. Filtramos cualquier valor None.
+        metadata_to_add = {
             "source": doc_id,
             "user_id": user_id,
             "filename": filename
-        })
-
+        }
+        clean_metadata = {k: v for k, v in metadata_to_add.items() if v is not None}
+        
         # 5. Chunking
         logger.info(f"Procesando chunks para {filename}")
         status_provider.update_status(job_uuid, "chunking")
+        
+        # Actualizamos el documento original (opcional, pero consistente)
+        document.metadata.update(clean_metadata)
+        
         chunks = chunking_service.process(document, LLMFactory)
         
-        # Aseguramos que todos los chunks hereden metadatos
+        # Aseguramos que todos los chunks hereden los metadatos limpios
         for chunk in chunks:
-            chunk.metadata.update({
-                "source": doc_id,
-                "user_id": user_id
-            })
+            chunk.metadata.update(clean_metadata)
         
         # 6. Indexing (Embedding & Storing)
         status_provider.update_status(job_uuid, "embedding")

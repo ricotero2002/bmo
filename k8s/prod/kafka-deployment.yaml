@@ -50,7 +50,7 @@ spec:
           - name: PYTHONUNBUFFERED
             value: "1"
           - name: KAFKA_GROUP_ID
-            value: "document-ingestor-v3"
+            value: "document-ingestor-v4"
           - name: KAFKA_SSL_CA_LOCATION
             value: "/etc/kafka/certs/ca.pem"  # montado desde kafka-ca-cert secret
         volumeMounts:

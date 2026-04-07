@@ -48,95 +48,144 @@ def test_full_workflow_cloud(client):
     Test de flujo completo: Ingestión -> Consulta -> Chat.
     Usa los proveedores reales configurados en APP_ENV=production.
     """
-    # 1. Ingestión
-    content = "Este es un documento de prueba técnica para validar el flujo cloud de BMO.".encode("utf-8")
-    filename = f"test_cloud_{uuid.uuid4().hex[:8]}.txt"
-    
-    print(f"\n[+] Iniciando ingesta de {filename}...")
-    response = client.post(
-        "/api/ingest",
-        files={"file": (filename, content, "text/plain")},
-        data={"user_id": "test_user_cloud"}
-    )
-    
-    assert response.status_code == 200
-    data = response.json()
-    assert "task_id" in data
-    task_id = data["task_id"]
-    doc_id = data.get("doc_id")
-    
-    print(f"✅ Ingesta encolada. Task ID: {task_id}")
-
-    # 2. Esperar procesamiento (máximo 60 segundos)
-    print("[+] Esperando a que el worker procese el documento...")
-    success = False
-    for _ in range(12): # 12 * 5s = 60s
-        status_resp = client.get(f"/api/task-status/{task_id}")
-        assert status_resp.status_code == 200
-        status_data = status_resp.json()
+    doc_id = None
+    try:
+        # 1. Ingestión
+        # Añadimos un timestamp al contenido para que el hash sea ÚNICO y no colisione con tareas viejas en Redis/Celery
+        unique_id = uuid.uuid4().hex[:8]
+        content = f"Este es un documento de prueba técnica ({unique_id}) para validar el flujo cloud de BMO.".encode("utf-8")
+        filename = f"test_cloud_{unique_id}.txt"
+        user_id = "test_user_cloud"
         
-        if status_data["status"] == "SUCCESS":
-            success = True
-            break
-        elif status_data["status"] == "FAILURE":
-            pytest.fail(f"La tarea de Celery falló: {status_data.get('result')}")
-            
-        time.sleep(5)
-    
-    if not success:
-        pytest.fail("El procesamiento del documento excedió el tiempo límite (60s).")
-    
-    print("✅ Documento procesado exitosamente.")
-
-    # 3. Query (Búsqueda semántica en Pinecone)
-    # Le damos un pequeño margen extra a Pinecone para indexar
-    time.sleep(2)
-    print("[+] Probando búsqueda semántica (/query)...")
-    query_resp = client.post(
-        "/api/query",
-        json={"query": "prueba técnica", "user_id": "test_user_cloud"}
-    )
-    assert query_resp.status_code == 200
-    query_data = query_resp.json()
-    assert "context" in query_data
-    # Debería haber encontrado nuestro documento
-    assert any("prueba técnica" in ctx for ctx in query_data["context"])
-    print("✅ Búsqueda semántica exitosa.")
-
-    # 4. Ask (Conversación con Postgres Checkpointer)
-    print("[+] Probando Chat Agent (/ask)...")
-    thread_id = str(uuid.uuid4())
-    ask_resp = client.post(
-        "/api/ask",
-        json={
-            "message": "¿De qué trata el documento de prueba técnica que subí?",
-            "thread_id": thread_id,
-            "user_info": {"user_id": "test_user_cloud"}
-        }
-    )
-    assert ask_resp.status_code == 200
-    ask_data = ask_resp.json()
-    assert "response" in ask_data
-    assert len(ask_data["response"]) > 10
-    print(f"✅ Respuesta del agente: {ask_data['response'][:50]}...")
-
-    # 5. Listar Chats (Verificar persistencia en Postgres)
-    print("[+] Verificando persistencia de chats...")
-    list_resp = client.get("/api/chats", params={"user_id": "test_user_cloud"})
-    assert list_resp.status_code == 200
-    chats = list_resp.json().get("chats", [])
-    assert any(c["thread_id"] == thread_id for c in chats)
-    print("✅ Chat persistido correctamente.")
-
-    # 6. Cleanup (Eliminar documento)
-    if doc_id:
-        print(f"[+] Limpiando recursos (doc_id: {doc_id})...")
-        del_resp = client.post(
-            "/api/delete_file",
-            json={"doc_id": doc_id, "user_id": "test_user_cloud"}
+        print(f"\n[+] Iniciando ingesta de {filename} para el usuario {user_id}...")
+        response = client.post(
+            "/api/ingest",
+            files={"file": (filename, content, "text/plain")},
+            data={"user_id": user_id}
         )
-        assert del_resp.status_code == 200
-        print("✅ Petición de eliminación enviada.")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert "task_id" in data
+        task_id = data["task_id"]
+        doc_id = data.get("doc_id")
+        
+        print(f"✅ Ingesta encolada. Task ID: {task_id}")
+
+        # 2. Esperar procesamiento (máximo 60 segundos)
+        print("[+] Esperando a que el worker procese el documento en la DB...")
+        success = False
+        for i in range(40):  
+            status_resp = client.get(f"/api/ingestion-status/{doc_id}")
+            assert status_resp.status_code == 200
+            status_data = status_resp.json()
+            
+            db_status = status_data.get("status")
+            if i % 2 == 0: # Reducimos verbosidad
+                print(f"    [Poll {i+1}] Estado actual en DB: {db_status}")
+            
+            if db_status == "indexed":
+                success = True
+                break
+            elif db_status in ["failed", "dead", "delete_failed"]:
+                error_msg = f"El procesamiento falló en DB: {status_data.get('error_msg')}"
+                print(f"❌ {error_msg}")
+                pytest.fail(error_msg)
+                
+            time.sleep(3) # Bajamos un poco el delay para ser más rápidos
+        
+        if not success:
+            pytest.fail("El procesamiento del documento excedió el tiempo límite.")
+        
+        print("✅ Documento procesado exitosamente.")
+
+        # 3. Query (Búsqueda semántica en Pinecone)
+        print(f"[+] Probando búsqueda semántica (/query) para '{unique_id}'...")
+        found = False
+        for i in range(10): # Más reintentos (10 * 3s = 30s)
+            time.sleep(3)
+            query_resp = client.post(
+                "/api/query",
+                json={"query": "prueba técnica", "user_id": user_id}
+            )
+            assert query_resp.status_code == 200
+            context = query_resp.json().get("context", [])
+            
+            if any(unique_id in ctx for ctx in context) or any("prueba técnica" in ctx for ctx in context):
+                found = True
+                break
+            print(f"    [Query Poll {i+1}/10] No encontrado aún...")
+
+        if not found:
+            pytest.fail(f"Búsqueda semántica falló: No se recuperó el contexto esperado ({unique_id}).")
+        
+        print("✅ Búsqueda semántica exitosa.")
+
+        # 4. Ask Stream (Conversación con Postgres Checkpointer)
+        print("[+] Probando Chat Agent Stream (/ask/stream)...")
+        thread_id = str(uuid.uuid4())
+        full_text = ""
+        # Usamos client.stream para consumir el SSE correctamente con TestClient
+        with client.stream(
+            "POST",
+            "/api/ask/stream",
+            json={
+                "message": "¿De qué trata el documento de prueba técnica que subí?",
+                "thread_id": thread_id,
+                "user_info": {"user_id": user_id},
+                "prompt_version": "rag_v3"
+            }
+        ) as ask_resp:
+            assert ask_resp.status_code == 200
+            import json
+            for line in ask_resp.iter_lines():
+                if not line:
+                    continue
+                # Las líneas de SSE vienen como "data: {...}"
+                if line.startswith("data: "):
+                    try:
+                        data = json.loads(line[6:])
+                        if data["type"] == "token":
+                            full_text += data["content"]
+                        elif data["type"] == "error":
+                            pytest.fail(f"Error en stream: {data['content']}")
+                    except json.JSONDecodeError:
+                        continue
+        
+        assert len(full_text) > 10
+        print(f"✅ Respuesta del agente: {full_text[:50]}...")
+
+        # 5. Listar Chats (Verificar persistencia en Postgres)
+        print("[+] Verificando persistencia de chats...")
+        # Damos un pequeño tiempo para que BackgroundTask de persistencia termine
+        time.sleep(3) 
+        
+        list_resp = client.get("/api/chats", params={"user_id": user_id})
+        assert list_resp.status_code == 200
+        chats = list_resp.json().get("chats", [])
+        
+        # El thread_id debería estar en la lista si la persistencia funcionó
+        found_chat = any(c["thread_id"] == thread_id for c in chats)
+        if not found_chat:
+            print(f"⚠️ Debug: thread_id {thread_id} no encontrado en {chats}")
+            
+        assert found_chat, f"El thread_id {thread_id} no se persistió en la tabla de chats."
+        print("✅ Chat persistido correctamente.")
+
+    finally:
+        # 6. Cleanup (Eliminar documento)
+        if doc_id:
+            print(f"\n[+] Cleanup: Eliminando recursos (doc_id: {doc_id})...")
+            # Re-intentamos un par de veces si falla el borrado inicial (por si el worker está ocupado o lock)
+            for _ in range(3):
+                del_resp = client.post(
+                    "/api/delete_file",
+                    json={"doc_id": doc_id, "user_id": user_id}
+                )
+                if del_resp.status_code == 200:
+                    print("✅ Petición de eliminación enviada.")
+                    break
+                time.sleep(2)
 
 def test_dead_letter_queue_health(client):
     """Verifica el estado de la DLQ en RabbitMQ."""

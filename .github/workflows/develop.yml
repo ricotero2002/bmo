@@ -57,45 +57,11 @@ jobs:
       run: |
         pytest src/tests/agente/ -v
 
-  # ─── Conectividad con servicios cloud administrados ───────────────────────
-  # Este job corre en paralelo con "test" y solo se activa cuando los GitHub
-  # Secrets están configurados (forks y PRs externos lo saltean silenciosamente).
-  # Requiere que mTLS esté DESACTIVADO en Oracle ADB para conectarse sin wallet.
-  cloud-connectivity:
-    runs-on: ubuntu-latest
-    # Este job siempre corre, pero los tests individuales se saltean automáticamente
-    # (via @pytest.mark.skipif) si sus variables de entorno no están configuradas.
-    # En forks o PRs sin secrets, todos los tests se marcan como SKIPPED (no FAILED).
-
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
-
-    - name: Obtener secretos de Infisical
-      uses: Infisical/secrets-action@v1.0.8
-      with:
-          client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
-          client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
-          env-slug: "prod"
-          project-slug: "bmo-ai-assistant-qd7o"
-          secret-path: "/"
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements/local.txt
-        # Dependencias adicionales para cloud connectivity
-        pip install oracledb pinecone-client langchain-pinecone pika redis
-
-    - name: Run cloud connectivity tests
+    - name: Run Cloud Conection Tests
       env:
-        INTEGRATION_ENV: "cloud"
-        APP_ENV: "production"
+        INTEGRATION_ENV: cloud
       run: |
-        pytest src/tests/integration/test_cloud_connections.py -v --tb=short
-        pytest src/tests/integration/test_all_endpoints_cloud.py -v --tb=short
+        pytest src/tests/integration/test_cloud_connections.py -v -s
+        pytest src/tests/integration/test_full_ingestion_flow.py -v -s
+        pytest src/tests/integration/test_golden_rag.py -v -s
+        pytest src/tests/integration/test_tools_live.py -v -s
