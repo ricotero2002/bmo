@@ -231,6 +231,9 @@ class ChunkingService:
         
         # 2. Ruteo y división (delegado al router)
         chunks = self.router.route_and_split(llm_factory, text, filename, global_context)
+        
+        # Filtrar chunks vacíos para evitar error 400 en el embedder (Gemini)
+        chunks = [c for c in chunks if c.page_content.strip()]
             
         # 3. Post-procesamiento e inyección de metadata
         for i, chunk in enumerate(chunks):

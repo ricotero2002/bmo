@@ -159,11 +159,11 @@ def _get_adjacent_chunks(source: str, center_index: int, user_id: str) -> str:
             {"chunk_index": {"$in": target_indices}}
         ]
     }
-    
     try:
         # Buscamos en el vector store (k=3 porque son 3 chunks máximo)
-        # Usamos "" como query porque queremos búsqueda pura por filtro de metadata
-        docs = _vector_store.similarity_search("", k=3, filter=window_filter)
+        # TRUCO: No enviamos "" porque Gemini Embedder falla con strings vacíos. 
+        # Enviamos "contextual search" dado que el filtro de metadata es el que manda.
+        docs = _vector_store.similarity_search("contextual search", k=3, filter=window_filter)
         
         if not docs:
             return ""
@@ -282,7 +282,7 @@ def knowledge_base_retriever(
                 presigned_url = "#"
 
             final_results.append(
-                f"[Fuente: {filename} | URL: {presigned_url} | Tipo: {doc_type_str}]\n{content}"
+                f"Fuente: [{filename}]({presigned_url}) (Tipo: {doc_type_str})\n{content}"
             )
             processed_blobs.add(blob_id)
 

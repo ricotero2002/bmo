@@ -64,6 +64,15 @@ export async function sendFeedback(
   return data.feedback_id;
 }
 
+export async function deleteChat(threadId: string): Promise<void> {
+  const response = await fetch(`/api/chats/${threadId}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error("Failed to delete chat");
+  }
+}
+
 export async function fetchDocuments(userId: string) {
   const response = await fetch(`/api/debug/document?user_id=${userId}`);
   if (!response.ok) throw new Error("Failed to fetch documents");

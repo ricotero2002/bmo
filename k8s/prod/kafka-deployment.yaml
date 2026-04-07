@@ -27,11 +27,11 @@ spec:
         command: ["python", "-m", "src.workers.kafka_consumer"]
         resources:
           requests:
-            cpu: "100m"
-            memory: "256Mi"
+            cpu: "50m"
+            memory: "150Mi"
           limits:
-            cpu: "500m"
-            memory: "1Gi"
+            cpu: "300m"
+            memory: "350Mi"
         envFrom:
         - secretRef:
             name: app-secrets
@@ -52,7 +52,7 @@ spec:
           - name: KAFKA_GROUP_ID
             value: "document-ingestor-v4"
           - name: KAFKA_SSL_CA_LOCATION
-            value: "/etc/kafka/certs/ca.pem"  # montado desde kafka-ca-cert secret
+            value: "/etc/kafka/certs/ca.pem"
         volumeMounts:
         - name: kafka-ca-cert
           mountPath: /etc/kafka/certs
@@ -60,4 +60,5 @@ spec:
       volumes:
       - name: kafka-ca-cert
         secret:
-          secretName: kafka-ca-cert  # kubectl create secret generic kafka-ca-cert --from-file=ca.pem=./ca.pem -n personal-ai
+          secretName: kafka-ca-cert
+

@@ -497,3 +497,4 @@ Prueba de Endpoint: Intenta llamar al endpoint /api/seguro en FastAPI pasando el
 
 Ahora que funciona tendria que registrar estos usuarios tambien en mi base de datos con elementos de su perfil como nombre y esas cosas junto con preferencias.
 Tambien registrar cosas como diferentes niveles y maximo de usos por mes ponele o algo asi
+Crear perfil comun y perfil admin, que el perfil admin lo pueda obtener desde los accessToken y gracias a eso poder ver un lugar extra en el frontend para probar cosas.

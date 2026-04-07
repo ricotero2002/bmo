@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Header
 from fastapi.responses import StreamingResponse, JSONResponse
 from src.schemas.fastapi import QueryRequest, QueryResponse, AskRequest, DeleteRequest, FeedbackRequest
 from src.api.dependencies import *
@@ -13,6 +13,11 @@ import asyncio
 
 #ver como exportar el router para main
 router = APIRouter()
+
+# --- EL PATOVICA ASÍNCRONO ---
+# Permitimos un máximo de 10 ejecuciones pesadas (LLM) en paralelo por cada Worker.
+# Esto evita picos de RAM (>2GB) pero permite que las peticiones esperen en fila en vez de dar 503.
+llm_semaphore = asyncio.Semaphore(20)
 
 @router.get("/health")
 async def health_check():
@@ -203,6 +208,8 @@ async def delete_document(
         if not job:
             return {"error": "Job not found", "status_code": 404}
 
+        # O si el documento aparece distinto que indexed
+
         result = await get_deleting.delete_file(
             doc_id=document_uuid,
             user_id=request.user_id,
@@ -260,19 +267,25 @@ async def query_rag(
 @router.post("/ask")
 async def ask_agent(
     request: AskRequest,
+    x_stress_test: Optional[bool] = Header(None, alias="X-Stress-Test"),
     agent_service = Depends(get_agent_service)
 ):
     try:
         # Si thread_id está vacío, creamos una nueva conversación
         thread_id = request.thread_id or str(uuid.uuid4())
         user_context = request.user_info or {}
+        
+        # Inyectar el flag de stress test si el header está presente
+        if x_stress_test:
+            user_context["is_stress_test"] = True
             
-        result = await agent_service.chat(
-            message=request.message, 
-            thread_id=thread_id,
-            user_info=user_context,
-            prompt_version=request.prompt_version
-        )
+        async with llm_semaphore:
+            result = await agent_service.chat(
+                message=request.message, 
+                thread_id=thread_id,
+                user_info=user_context,
+                prompt_version=request.prompt_version
+            )
         # Obtener el último mensaje de IA
         messages = result.get("messages", [])
         last_message = ""
@@ -330,6 +343,7 @@ async def get_messages(
 @router.post("/ask/stream")
 async def ask_agent_stream(
     request: AskRequest,
+    x_stress_test: Optional[bool] = Header(None, alias="X-Stress-Test"),
     agent_service = Depends(get_agent_service),
     chat_provider = Depends(get_chat_provider)
 ):
@@ -346,48 +360,54 @@ async def ask_agent_stream(
         
         try:
             user_context = request.user_info or {}
+            if x_stress_test:
+                user_context["is_stress_test"] = True
             
-            # Llamamos al nuevo método asíncrono que creamos en agent.py
-            async for event in agent_service.astream_chat(
-                message=request.message, 
-                thread_id=thread_id,
-                user_info=user_context,
-                prompt_version=request.prompt_version
-            ):
-                kind = event["event"]
-                tags = event.get("tags", [])
-                
-                # Si arranca la generación principal del agente, reseteamos el buffer de respuesta 
-                # (útil si hay reintentos por alucinaciones para no guardar basura)
-                if kind == "on_chat_model_start" and "agent_generation" in tags:
-                    if "".join(full_response_text).strip():
-                        retry_token = "\n\n*(Borrador descartado: corrigiendo imprecisiones detectadas...)*\n\n"
-                        yield f"data: {json.dumps({'type': 'token', 'content': retry_token})}\n\n"
-                    full_response_text.clear()
-                
-                # 1. Detectar cuando el LLM está transmitiendo la respuesta final
-                if kind == "on_chat_model_stream" and "agent_generation" in tags:
-                    content = event["data"]["chunk"].content
-                    if content:
-                        full_response_text.append(content)
-                        # Enviamos tipo 'token' para que el frontend lo sume al chat
-                        yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
-                
-                # 2. Detectar cuando se llama a una herramienta (Retriever)
-                elif kind == "on_tool_start":
-                    tool_name = event["name"]
-                    if tool_name == "knowledge_base_retriever":
-                        yield f"data: {json.dumps({'type': 'status', 'content': 'Buscando en la base de conocimientos...'})}\n\n"
-                    else:
-                        yield f"data: {json.dumps({'type': 'status', 'content': f'Usando herramienta: {tool_name}...'})}\n\n"
-                
-                # 3. Detectar nodos de validación (Guardrails/Graders)
-                elif kind == "on_chain_start":
-                    node_name = event.get("name")
-                    if node_name == "grade_documents":
-                        yield f"data: {json.dumps({'type': 'status', 'content': 'Evaluando relevancia de los documentos...'})}\n\n"
-                    elif node_name == "grade_hallucinations":
-                        yield f"data: {json.dumps({'type': 'status', 'content': 'Verificando alucinaciones...'})}\n\n"
+            # MAGIA AQUÍ: Entramos a la sala de espera (Semáforo).
+            # Solo avanzará si hay menos de 10 peticiones procesándose en este worker.
+            async with llm_semaphore:
+                async for event in agent_service.astream_chat(
+                    message=request.message, 
+                    thread_id=thread_id,
+                    user_info=user_context,
+                    prompt_version=request.prompt_version
+                ):
+                    kind = event["event"]
+                    tags = event.get("tags", [])
+                    
+                    if kind == "on_chat_model_start" and "agent_generation" in tags:
+                        if "".join(full_response_text).strip():
+                            yield f"data: {json.dumps({'type': 'status', 'content': 'Corrigiendo imprecisiones detectadas...'})}\n\n"
+                        full_response_text.clear()
+                        
+                    # --- FIX: CAPTURA DEL PLAN DE EJECUCIÓN ---
+                    elif kind == "on_chain_end" and event.get("name") == "task_planner":
+                        output = event.get("data", {}).get("output", {})
+                        if isinstance(output, dict) and "task_plan" in output:
+                            yield f"data: {json.dumps({'type': 'plan', 'data': output['task_plan']})}\n\n"
+                            
+                    elif kind == "on_chat_model_stream" and "agent_generation" in tags:
+                        content = event["data"]["chunk"].content
+                        if content:
+                            full_response_text.append(content)
+                            yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
+                    
+                    # --- FIX: CAPTURA DE INPUTS DE LA HERRAMIENTA (Para Status detallado) ---
+                    elif kind == "on_tool_start":
+                        tool_name = event["name"]
+                        tool_input = event.get("data", {}).get("input", {})
+                        yield f"data: {json.dumps({'type': 'tool-start', 'data': tool_name, 'input': tool_input})}\n\n"
+    
+                    elif kind == "on_tool_end":
+                        tool_name = event["name"]
+                        yield f"data: {json.dumps({'type': 'tool-end', 'data': tool_name})}\n\n"
+                    
+                    elif kind == "on_chain_start":
+                        node_name = event.get("name")
+                        if node_name == "grade_documents":
+                            yield f"data: {json.dumps({'type': 'status', 'content': 'Evaluando relevancia de los documentos...'})}\n\n"
+                        elif node_name == "grade_hallucinations":
+                            yield f"data: {json.dumps({'type': 'status', 'content': 'Verificando alucinaciones...'})}\n\n"
 
         except asyncio.CancelledError:
             import logging
@@ -397,31 +417,31 @@ async def ask_agent_stream(
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
             
-    def save_chat_history():
-        try:
-            # Crear la cabecera del chat si no existe
-            title = request.message[:50] + "..." if len(request.message) > 50 else request.message
-            user_id = request.user_info.get("user_id", "anonymous") if request.user_info else "anonymous"
-            thread_uuid = uuid.UUID(thread_id)
-            
-            chat_provider.create_chat(user_id=user_id, title=title, thread_id=thread_uuid)
-            
-            # Guardar mensaje del usuario
-            chat_provider.add_message(thread_id=thread_uuid, role="user", content=request.message)
-            
-            # Guardar respuesta generada completa
-            generated_text = "".join(full_response_text)
-            if generated_text:
-                chat_provider.add_message(thread_id=thread_uuid, role="assistant", content=generated_text)
-        except Exception as e:
-            print(f"[CHAT_PERSISTENCE_ERROR] {e}")
+        finally:
+            # Sincronizamos el final del stream
+            try:
+                # Crear la cabecera del chat si no existe
+                title = request.message[:50] + "..." if len(request.message) > 50 else request.message
+                user_id = request.user_info.get("user_id", "anonymous") if request.user_info else "anonymous"
+                thread_uuid = uuid.UUID(thread_id)
+                
+                chat_provider.create_chat(user_id=user_id, title=title, thread_id=thread_uuid)
+                
+                # Guardar mensaje del usuario
+                chat_provider.add_message(thread_id=thread_uuid, role="user", content=request.message)
+                
+                # Guardar respuesta generada completa
+                generated_text = "".join(full_response_text)
+                if generated_text:
+                    chat_provider.add_message(thread_id=thread_uuid, role="assistant", content=generated_text)
+            except Exception as e:
+                print(f"[CHAT_PERSISTENCE_ERROR] {e}")
 
-    task = BackgroundTask(save_chat_history)
     # El media_type es crucial para que el frontend (ej. Vercel AI SDK) lo lea como un stream continuo
     return StreamingResponse(
         event_generator(), 
         media_type="text/event-stream", 
-        background=task,
+
         headers={"X-Thread-ID": thread_id}
     )
 
@@ -476,6 +496,20 @@ def check_dlq_health():
             }
     except Exception as e:
         return {"error": str(e), "status_code": 500}
+
+@router.get("/feedback")
+async def get_feedback(
+    limit: int = 100,
+    chat_provider = Depends(get_chat_provider)
+):
+    """
+    Lista los últimos feedbacks recibidos (Thumbs up/down).
+    """
+    try:
+        feedbacks = chat_provider.get_all_feedback(limit=limit)
+        return {"feedbacks": feedbacks}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving feedback: {str(e)}")
 
 @router.post("/feedback")
 async def receive_feedback(

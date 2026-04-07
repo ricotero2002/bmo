@@ -4,13 +4,14 @@ import { useState, useEffect } from "react";
 import ChatInterface from "@/components/ChatInterface";
 import Sidebar from "@/components/Sidebar";
 import { useUser } from "@/app/context/UserContext";
-import { fetchMessages, Message } from "@/services/api";
+import { fetchMessages, fetchChats, Message, Chat, deleteChat } from "@/services/api";
 import { MyUIMessage } from "@/types/ai/types";
 import { generateId } from "ai";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import DocumentManager from "@/components/DocumentManager";
 import Profile from "@/components/Profile";
 import { testSecureEndpoint } from "@/services/api";
+import { Info } from "lucide-react";
 
 export default function Home() {
   // Check if user is authenticated
@@ -18,7 +19,7 @@ export default function Home() {
   const { userId, setUserId, userName, setUserName } = useUser();
   const queryClient = useQueryClient();
   const [threadId, setThreadId] = useState<string | null>(null);
-  const [promptVersion, setPromptVersion] = useState("rag_v2");
+  const [promptVersion, setPromptVersion] = useState(process.env.NEXT_PUBLIC_DEFAULT_PROMPT_VERSION || "rag_v2");
 
   // Query para obtener mensajes del thread actual
   const { data: history, isLoading: isLoadingHistory } = useQuery<Message[]>({
@@ -28,12 +29,21 @@ export default function Home() {
     staleTime: 1000 * 60 * 5, // 5 minutos de cache
   });
 
+  const { data: chatsData } = useQuery<Chat[]>({
+    queryKey: ["chats", userId],
+    queryFn: () => fetchChats(userId),
+    enabled: !!userId,
+  });
+
+  const currentChatTitle = chatsData?.find((c) => c.thread_id === threadId)?.title;
+
   // Modal de Login simple si no hay userId
   const [showLogin, setShowLogin] = useState(false);
   const [tempUserId, setTempUserId] = useState("");
 
   const [showDocumentManager, setShowDocumentManager] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [showChatDetails, setShowChatDetails] = useState(false);
 
   const [isActivelyLoadingHistory, setIsActivelyLoadingHistory] = useState(false);
 
@@ -86,6 +96,19 @@ export default function Home() {
     setInitialMessages([]);
   };
 
+  const handleDeleteChat = async (idToDelete: string) => {
+    try {
+      await deleteChat(idToDelete);
+      queryClient.invalidateQueries({ queryKey: ['chats'] });
+      if (idToDelete === threadId) {
+        handleNewChat();
+      }
+    } catch (error) {
+      console.error("Failed to delete chat", error);
+      alert("No se pudo eliminar el chat");
+    }
+  };
+
   const handleSelectChat = (selectedThreadId: string) => {
     if (selectedThreadId === threadId) return;
     setIsActivelyLoadingHistory(true);
@@ -114,14 +137,34 @@ export default function Home() {
         onSelectChat={handleSelectChat}
         onNewChat={handleNewChat}
         onManageDocuments={() => setShowDocumentManager(true)}
+        onDeleteChat={handleDeleteChat}
       />
 
       <main className="flex-1 flex flex-col relative">
         {/* Cabecera / Configuracion rápida (Oculta o minimizada) */}
         <header className="h-12 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between px-4 bg-zinc-50/50 dark:bg-zinc-950/50 backdrop-blur-sm z-10 shrink-0">
-          <h1 className="text-sm font-medium">
-            {threadId ? `Chat: ${threadId.split('-')[0]}...` : "New Conversation"}
-          </h1>
+          <div className="flex items-center gap-2 relative">
+            <h1 className="text-sm font-medium">
+              {threadId ? (currentChatTitle || "Loading...") : "New Conversation"}
+            </h1>
+            {threadId && (
+              <button
+                onClick={() => setShowChatDetails(!showChatDetails)}
+                className="text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 p-1 rounded transition-colors"
+                title="Mas detalles"
+              >
+                <Info size={16} />
+              </button>
+            )}
+
+            {showChatDetails && threadId && (
+              <div className="absolute top-10 left-0 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-lg rounded-md p-3 text-xs w-64 z-20">
+                <div className="font-semibold mb-1 border-b border-zinc-100 dark:border-zinc-800 pb-1">Chat Details</div>
+                <div className="text-zinc-500 mb-1">ID:</div>
+                <div className="font-mono bg-zinc-100 dark:bg-zinc-950 p-1 rounded break-all select-all">{threadId}</div>
+              </div>
+            )}
+          </div>
           <div className="flex items-center gap-2 text-xs text-zinc-500">
             <button
               onClick={() => setShowProfile(true)}
@@ -156,6 +199,10 @@ export default function Home() {
               promptVersion={promptVersion}
               initialMessages={initialMessages}
               onNewThreadId={handleNewThreadId}
+              onStreamingFinished={() => {
+                queryClient.invalidateQueries({ queryKey: ["messages", threadId] });
+                queryClient.invalidateQueries({ queryKey: ["chats", userId] });
+              }}
             />
           )}
         </div>

@@ -117,3 +117,42 @@ class ChatProvider:
             return feedback_id
         finally:
             session.close()
+
+    def get_all_feedback(self, limit: int = 100) -> List[dict]:
+        session = self.Session()
+        try:
+            feedbacks = session.query(ChatFeedback).order_by(ChatFeedback.timestamp.desc()).limit(limit).all()
+            return [
+                {
+                    "id": str(f.id),
+                    "thread_id": f.thread_id,
+                    "message_id": f.message_id,
+                    "user_prompt": f.user_prompt,
+                    "ai_response": f.ai_response,
+                    "tools_used": f.tools_used,
+                    "score": f.score,
+                    "user_correction": f.user_correction,
+                    "timestamp": f.timestamp.isoformat()
+                } for f in feedbacks
+            ]
+        finally:
+            session.close()
+
+    def delete_chat(self, thread_id: uuid.UUID) -> None:
+        if isinstance(thread_id, str):
+            thread_id = uuid.UUID(thread_id)
+            
+        session = self.Session()
+        try:
+            # Eliminar mensajes primero (no hay cascada definida en base de datos)
+            session.query(Message).filter(Message.chat_id == thread_id).delete(synchronize_session=False)
+            
+            # Eliminar feedback del chat
+            session.query(ChatFeedback).filter(ChatFeedback.thread_id == str(thread_id)).delete(synchronize_session=False)
+
+            # Eliminar el chat
+            session.query(Chat).filter(Chat.id == thread_id).delete(synchronize_session=False)
+            
+            session.commit()
+        finally:
+            session.close()

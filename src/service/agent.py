@@ -141,11 +141,18 @@ class AgentService:
 
         # Si el agente generó contenido vacío (sin texto ni tool_calls)
         # puede suceder cuando no tiene instrucción clara o falla al sintetizar el contexto
+        # Identificar el ultimo turno
+        last_human_idx = -1
+        for i, msg in enumerate(messages):
+            if msg.type == "human" and not str(msg.content).startswith("[SISTEMA]"):
+                last_human_idx = i
+        current_turn_msgs = messages[last_human_idx + 1:] if last_human_idx != -1 else messages
+
         if not getattr(last_message, "content", "").strip():
             # Si hubo un uso previo de herramientas de búsqueda, es un fallo de síntesis (no de herramientas)
             retriever_used = any(
-                isinstance(msg, ToolMessage) and msg.name in [_RETRIEVER_TOOL_NAME, "web_search"]
-                for msg in messages
+                msg.type == "tool" and msg.name in [_RETRIEVER_TOOL_NAME, "web_search"]
+                for msg in current_turn_msgs
             )
             if retriever_used:
                 # Si falló la síntesis pero hay información, le damos un "nudge" (codazo)
@@ -166,11 +173,11 @@ class AgentService:
             logger.warning("Agent generated empty content and no retrieval context found. Routing to cleanup.")
             return Command(goto="cleanup_rag_memory")
 
-        # Si el agente generó texto, verificar si en CUALQUIER parte del historial
+        # Si el agente generó texto, verificar si en el turno actual
         # se usó el retriever o búsqueda web — si es así, siempre pasar por validación
         retriever_used = any(
-            isinstance(msg, ToolMessage) and msg.name in [_RETRIEVER_TOOL_NAME, "web_search"]
-            for msg in messages
+            msg.type == "tool" and msg.name in [_RETRIEVER_TOOL_NAME, "web_search"]
+            for msg in current_turn_msgs
         )
         if retriever_used:
             return Command(goto="grade_generation_vs_documents")
@@ -315,9 +322,16 @@ class AgentService:
         return {"messages": [feedback]}
 
     async def _grade_generation_vs_documents_and_question(self, state: GraphState):
-        """Chequea alucinaciones contra TODAS las fuentes (local + web)."""
+        """Chequea alucinaciones contra fuentes (local + web) del TURNO ACTUAL."""
+        messages = state["messages"]
+        last_human_idx = -1
+        for i, msg in enumerate(messages):
+            if msg.type == "human" and not str(msg.content).startswith("[SISTEMA]"):
+                last_human_idx = i
+        current_turn_msgs = messages[last_human_idx + 1:] if last_human_idx != -1 else messages
+
         docs_content = ""
-        for msg in state["messages"]:
+        for msg in current_turn_msgs:
             if msg.type == "tool" and msg.name in [_RETRIEVER_TOOL_NAME, "web_search"]:
                 docs_content += f"\n{msg.content}"
 
@@ -578,11 +592,21 @@ class AgentService:
     async def chat(self, message: str, thread_id: str, user_info: dict, prompt_version: str):
         # user_id en configurable para que RunnableConfig lo entregue a las tools (invisible para el LLM)
         user_id = user_info.get("user_id") if user_info else None
+        
+        tags = ["agent_generation"]
+        metadata = {}
+        
+        if user_info and user_info.get("is_stress_test"):
+            tags.append("stress_test_v1")
+            metadata["test_type"] = "load_test"
+
         config = {
             "configurable": {
                 "thread_id": thread_id,
                 "user_id": user_id,
-            }
+            },
+            "tags": tags,
+            "metadata": metadata
         }
 
         input_message = {
@@ -603,11 +627,21 @@ class AgentService:
         Versión streaming del chat. Emite eventos detallados del grafo usando astream_events.
         """
         user_id = user_info.get("user_id") if user_info else None
+        
+        tags = ["agent_generation"]
+        metadata = {}
+        
+        if user_info and user_info.get("is_stress_test"):
+            tags.append("stress_test_v1")
+            metadata["test_type"] = "load_test"
+
         config = {
             "configurable": {
                 "thread_id": thread_id,
                 "user_id": user_id,
-            }
+            },
+            "tags": tags,
+            "metadata": metadata
         }
 
         input_message = {

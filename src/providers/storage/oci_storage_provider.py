@@ -98,6 +98,11 @@ class OCIStorageProvider(StorageProvider):
         
         logger.warning(f"--- DEBUG OCI: {object_name} (bytes size: {size}) ---")
 
+        import mimetypes
+        content_type, _ = mimetypes.guess_type(object_name)
+        if not content_type:
+            content_type = "application/octet-stream"
+
         # 2. Ejecutar el PutObject con ContentLength obligatorio para OCI
         try:
             self.client.put_object(
@@ -105,10 +110,10 @@ class OCIStorageProvider(StorageProvider):
                 Key=object_name,
                 Body=file_bytes,
                 ContentLength=size,
-                # OCI suele preferir este contentType si no se especifica
-                ContentType="application/octet-stream"
+                ContentType=content_type,
+                ContentDisposition="inline"
             )
-            logger.warning(f"Éxito: oci://{bucket}/{object_name} ({size} bytes)")
+            logger.warning(f"Éxito: oci://{bucket}/{object_name} ({size} bytes) [{content_type}]")
         except ClientError as e:
             logger.error(f"Fallo PutObject en OCI: {e}")
             raise
@@ -133,6 +138,10 @@ class OCIStorageProvider(StorageProvider):
         # URL prefirmada válida por 1 hora
         return self.client.generate_presigned_url(
             "get_object",
-            Params={"Bucket": bucket, "Key": object_name},
+            Params={
+                "Bucket": bucket, 
+                "Key": object_name,
+                "ResponseContentDisposition": "inline"
+            },
             ExpiresIn=3600,
         )

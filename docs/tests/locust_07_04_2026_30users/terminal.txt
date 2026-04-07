@@ -1,0 +1,381 @@
+PS C:\Users\Agustin\Desktop\Agustin\personal-ai-assistant> kubectl get pods -n personal-ai -w
+>> 
+NAME                               READY   STATUS    RESTARTS   AGE
+api-deployment-6cd996df4c-7998j    1/1     Running   0          57s
+api-deployment-6cd996df4c-8dzpz    1/1     Running   0          58s
+celery-exporter-7545cf7777-d29pj   1/1     Running   0          58s
+worker-deployment-6b9588656b-l9442   0/1     Pending   0          0s
+worker-deployment-6b9588656b-l9442   0/1     Pending   0          0s
+worker-deployment-6b9588656b-l9442   0/1     ContainerCreating   0          0s
+worker-deployment-6b9588656b-l9442   1/1     Running             0          1s
+PS C:\Users\Agustin\Desktop\Agustin\personal-ai-assistant> kubectl get pods -n personal-ai -w
+>> 
+NAME                                 READY   STATUS    RESTARTS   AGE
+api-deployment-6cd996df4c-7998j      1/1     Running   0          4m7s
+api-deployment-6cd996df4c-8dzpz      1/1     Running   0          4m8s
+celery-exporter-7545cf7777-d29pj     1/1     Running   0          4m8s
+worker-deployment-6b9588656b-l9442   1/1     Running   0          2m30s
+api-deployment-6cd996df4c-7998j      1/1     Terminating   0          11m
+api-deployment-6cd996df4c-7998j      0/1     Completed     0          11m
+api-deployment-6cd996df4c-7998j      0/1     Completed     0          11m
+api-deployment-6cd996df4c-7998j      0/1     Completed     0          11m
+worker-deployment-6b9588656b-l9442   1/1     Terminating   0          9m58s
+worker-deployment-6b9588656b-l9442   0/1     Completed     0          10m
+worker-deployment-6b9588656b-l9442   0/1     Completed     0          10m
+worker-deployment-6b9588656b-l9442   0/1     Completed     0          10m
+
+
+PS C:\Users\Agustin\Desktop\Agustin\personal-ai-assistant> kubectl get hpa -n personal-ai -w
+>> 
+NAME                             REFERENCE                              TARGETS              MINPODS   MAXPODS   REPLICAS   AGE
+api-hpa                          Deployment/api-deployment              cpu: <unknown>/60%   1         2         2          14d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           <unknown>/5 (avg)    1         1         0          13d
+keda-hpa-kafka-consumer-scaler   Deployment/kafka-consumer-deployment   <unknown>/5 (avg)    1         1         0          10d
+api-hpa                          Deployment/api-deployment              cpu: 601%/60%        1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 351%/60%        1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 36%/60%         1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 5%/60%          1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 53%/60%         1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 164%/60%        1         2         2          14d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           2/5 (avg)            1         1         1          13d
+api-hpa                          Deployment/api-deployment              cpu: 70%/60%         1         2         2          14d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           0/5 (avg)            1         1         1          13d
+api-hpa                          Deployment/api-deployment              cpu: 46%/60%         1         2         2          14d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           1/5 (avg)            1         1         1          13d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           0/5 (avg)            1         1         1          13d
+api-hpa                          Deployment/api-deployment              cpu: 92%/60%         1         2         2          14d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           1/5 (avg)            1         1         1          13d
+api-hpa                          Deployment/api-deployment              cpu: 73%/60%         1         2         2          14d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           0/5 (avg)            1         1         1          13d
+api-hpa                          Deployment/api-deployment              cpu: 85%/60%         1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 95%/60%         1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 83%/60%         1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 72%/60%         1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 107%/60%        1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 113%/60%        1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 69%/60%         1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 100%/60%        1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 85%/60%         1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 94%/60%         1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 68%/60%         1         2         2          14d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           3/5 (avg)            1         1         1          13d
+api-hpa                          Deployment/api-deployment              cpu: 104%/60%        1         2         2          14d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           2/5 (avg)            1         1         1          13d
+api-hpa                          Deployment/api-deployment              cpu: 94%/60%         1         2         2          14d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           3/5 (avg)            1         1         1          13d
+api-hpa                          Deployment/api-deployment              cpu: 63%/60%         1         2         2          14d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           2/5 (avg)            1         1         1          13d
+api-hpa                          Deployment/api-deployment              cpu: 25%/60%         1         2         2          14d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           0/5 (avg)            1         1         1          13d
+api-hpa                          Deployment/api-deployment              cpu: 15%/60%         1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 11%/60%         1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 12%/60%         1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 13%/60%         1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 12%/60%         1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 10%/60%         1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 10%/60%         1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 10%/60%         1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 10%/60%         1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 9%/60%          1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 10%/60%         1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 9%/60%          1         2         2          14d
+api-hpa                          Deployment/api-deployment              cpu: 10%/60%         1         2         2          14d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           0/5 (avg)            1         1         1          13d
+api-hpa                          Deployment/api-deployment              cpu: 10%/60%         1         2         1          14d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           <unknown>/5 (avg)    1         1         0          13d
+api-hpa                          Deployment/api-deployment              cpu: 11%/60%         1         2         1          14d
+api-hpa                          Deployment/api-deployment              cpu: 10%/60%         1         2         1          14d
+api-hpa                          Deployment/api-deployment              cpu: 10%/60%         1         2         1          14d
+api-hpa                          Deployment/api-deployment              cpu: 10%/60%         1         2         1          14d
+api-hpa                          Deployment/api-deployment              cpu: 9%/60%          1         2         1          14d
+api-hpa                          Deployment/api-deployment              cpu: 10%/60%         1         2         1          14d
+
+
+
+
+PS C:\Users\Agustin\Desktop\Agustin\personal-ai-assistant> kubectl logs -n personal-ai -l app=api --follow
+>> 
+/usr/local/lib/python3.12/site-packages/pydub/utils.py:170: RuntimeWarning: Couldn't find ffmpeg or avconv - defaulting to ffmpeg, but may not work
+  warn("Couldn't find ffmpeg or avconv - defaulting to ffmpeg, but may not work", RuntimeWarning)
+/usr/local/lib/python3.12/site-packages/opentelemetry/instrumentation/dependencies.py:4: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  from pkg_resources import (
+/usr/local/lib/python3.12/site-packages/opentelemetry/instrumentation/dependencies.py:4: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  from pkg_resources import (
+INFO:     Started server process [9]
+INFO:     Waiting for application startup.
+INFO:     Started server process [8]
+INFO:     Waiting for application startup.
+INFO:     Started server process [8]
+INFO:     Waiting for application startup.
+/app/src/api/main.py:54: UserWarning: WARNING! stream_options is not default parameter.
+                stream_options was transferred to model_kwargs.
+                Please confirm that stream_options is what you intended.
+  app.state.agent_service = AgentService(app.state.llm_factory, tools, app.state.checkpointer)
+/app/src/api/main.py:54: UserWarning: WARNING! stream_options is not default parameter.
+                stream_options was transferred to model_kwargs.
+                Please confirm that stream_options is what you intended.
+  app.state.agent_service = AgentService(app.state.llm_factory, tools, app.state.checkpointer)
+/app/src/api/main.py:54: UserWarning: WARNING! stream_options is not default parameter.
+                stream_options was transferred to model_kwargs.
+                Please confirm that stream_options is what you intended.
+  app.state.agent_service = AgentService(app.state.llm_factory, tools, app.state.checkpointer)
+/app/src/api/main.py:54: UserWarning: WARNING! stream_options is not default parameter.
+                stream_options was transferred to model_kwargs.
+                Please confirm that stream_options is what you intended.
+  app.state.agent_service = AgentService(app.state.llm_factory, tools, app.state.checkpointer)
+/app/src/api/main.py:54: UserWarning: WARNING! stream_options is not default parameter.
+                stream_options was transferred to model_kwargs.
+                Please confirm that stream_options is what you intended.
+  app.state.agent_service = AgentService(app.state.llm_factory, tools, app.state.checkpointer)
+/app/src/api/main.py:54: UserWarning: WARNING! stream_options is not default parameter.
+                stream_options was transferred to model_kwargs.
+                Please confirm that stream_options is what you intended.
+  app.state.agent_service = AgentService(app.state.llm_factory, tools, app.state.checkpointer)
+/app/src/api/main.py:54: UserWarning: WARNING! stream_options is not default parameter.
+                stream_options was transferred to model_kwargs.
+                Please confirm that stream_options is what you intended.
+  app.state.agent_service = AgentService(app.state.llm_factory, tools, app.state.checkpointer)
+/app/src/api/main.py:54: UserWarning: WARNING! stream_options is not default parameter.
+                stream_options was transferred to model_kwargs.
+                Please confirm that stream_options is what you intended.
+  app.state.agent_service = AgentService(app.state.llm_factory, tools, app.state.checkpointer)
+INFO:     Application startup complete.
+INFO:     Application startup complete.
+INFO:     Application startup complete.
+INFO:     Application startup complete.
+INFO:     10.42.0.178:33262 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:50978 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:50966 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33270 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:50990 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51000 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33272 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33280 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51012 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33286 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51026 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33300 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51034 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51040 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33308 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33312 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51054 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51058 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33318 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33320 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:45826 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:56232 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:45840 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:56256 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     10.42.0.178:56256 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:45846 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:45862 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:56264 - "POST /api/ask/stream HTTP/1.1" 200 OK
+/usr/local/lib/python3.12/site-packages/langchain_classic/retrievers/contextual_compression.py:40: UserWarning: WARNING! stream_options is not default parameter.
+                stream_options was transferred to model_kwargs.
+                Please confirm that stream_options is what you intended.
+  compressed_docs = self.base_compressor.compress_documents(
+/usr/local/lib/python3.12/site-packages/langchain_classic/retrievers/contextual_compression.py:40: UserWarning: WARNING! stream_options is not default parameter.
+                stream_options was transferred to model_kwargs.
+                Please confirm that stream_options is what you intended.
+  compressed_docs = self.base_compressor.compress_documents(
+/usr/local/lib/python3.12/site-packages/langchain_classic/retrievers/contextual_compression.py:40: UserWarning: WARNING! stream_options is not default parameter.
+                stream_options was transferred to model_kwargs.
+                Please confirm that stream_options is what you intended.
+  compressed_docs = self.base_compressor.compress_documents(
+--- DEBUG OCI: locust_tester/d9ba402b-0fe2-45cc-859f-98e9e73f6c87 (bytes size: 12955) ---
+INFO:     10.42.0.178:45872 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:56278 - "POST /api/ask/stream HTTP/1.1" 200 OK
+/usr/local/lib/python3.12/site-packages/langchain_classic/retrievers/contextual_compression.py:40: UserWarning: WARNING! stream_options is not default parameter.
+                stream_options was transferred to model_kwargs.
+                Please confirm that stream_options is what you intended.
+  compressed_docs = self.base_compressor.compress_documents(
+Éxito: oci://bmo-documents/locust_tester/d9ba402b-0fe2-45cc-859f-98e9e73f6c87 (12955 bytes) [application/octet-stream]
+INFO:     10.42.0.178:56240 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.178:52348 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/ef30012f-5b61-4625-8b5e-580ac2625c8d (bytes size: 12824) ---
+Éxito: oci://bmo-documents/locust_tester/ef30012f-5b61-4625-8b5e-580ac2625c8d (12824 bytes) [application/octet-stream]
+INFO:     10.42.0.178:51040 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33318 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51040 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33262 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51054 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:43180 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:50978 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33300 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51000 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51012 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:45840 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/74bbc49d-f263-4f48-8a11-4d77e147ecf1 (bytes size: 12828) ---
+INFO:     10.42.0.178:51058 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:59286 - "POST /api/ask/stream HTTP/1.1" 200 OK
+Éxito: oci://bmo-documents/locust_tester/74bbc49d-f263-4f48-8a11-4d77e147ecf1 (12828 bytes) [application/octet-stream]
+INFO:     10.42.0.178:42436 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33286 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.178:39566 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33286 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:50990 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33320 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51026 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51026 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:45846 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:56264 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:57116 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:56278 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:60382 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:45840 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:59286 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51000 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33262 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:57938 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33280 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/befd82f5-d5c4-4f34-b74f-0313f3ac3fab (bytes size: 12815) ---
+Éxito: oci://bmo-documents/locust_tester/befd82f5-d5c4-4f34-b74f-0313f3ac3fab (12815 bytes) [application/octet-stream]
+INFO:     10.42.0.178:51040 - "POST /api/ingest HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/218874ee-ac35-4e8e-bce9-b4eca149efb8 (bytes size: 12871) ---
+INFO:     10.42.0.178:51040 - "POST /api/ask/stream HTTP/1.1" 200 OK
+Éxito: oci://bmo-documents/locust_tester/218874ee-ac35-4e8e-bce9-b4eca149efb8 (12871 bytes) [application/octet-stream]
+INFO:     10.42.0.178:50116 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51054 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:39566 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.178:39566 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51012 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33300 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:56264 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:45862 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:38084 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:45826 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:42436 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:45872 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/d454a202-4db0-43ce-b398-d8ccb2282b0b (bytes size: 12943) ---
+INFO:     10.42.0.178:45840 - "POST /api/ask/stream HTTP/1.1" 200 OK
+Éxito: oci://bmo-documents/locust_tester/d454a202-4db0-43ce-b398-d8ccb2282b0b (12943 bytes) [application/octet-stream]
+INFO:     10.42.0.178:49370 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:59286 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51058 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51058 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:52620 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:58302 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     10.42.0.178:39566 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:50990 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:45846 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51000 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:43180 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51026 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33262 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:50116 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51040 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33286 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:60382 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:56264 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33300 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51012 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:46896 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:57938 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:45840 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:42436 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:45862 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:52256 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:49370 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:59286 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:45872 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:52268 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:39566 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:45796 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:57116 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:38084 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/e6e4dacc-e4d2-4136-98a4-1aba2bcf8e47 (bytes size: 12927) ---
+INFO:     10.42.0.178:45840 - "GET /metrics HTTP/1.1" 200 OK
+Éxito: oci://bmo-documents/locust_tester/e6e4dacc-e4d2-4136-98a4-1aba2bcf8e47 (12927 bytes) [application/octet-stream]
+--- DEBUG OCI: locust_tester/e978f383-e5ea-4d31-a0f6-39a1d0387eba (bytes size: 12900) ---
+INFO:     10.42.0.178:51058 - "POST /api/ask/stream HTTP/1.1" 200 OK
+Éxito: oci://bmo-documents/locust_tester/e978f383-e5ea-4d31-a0f6-39a1d0387eba (12900 bytes) [application/octet-stream]
+INFO:     10.42.0.178:33280 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33280 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:56264 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51040 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.178:45840 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51040 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:48594 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:59286 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:39566 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51012 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:57686 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:42436 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:45840 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:49370 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:59286 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:36626 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:45826 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51026 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:52620 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:60382 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:39566 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:57938 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:45846 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33206 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:59286 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:43180 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:52256 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:52268 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33186 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51040 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:50116 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:39566 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51012 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51026 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:49370 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33286 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:46896 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:48176 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/138218b0-844a-4051-bd69-4e7e81d484bd (bytes size: 12886) ---
+Éxito: oci://bmo-documents/locust_tester/138218b0-844a-4051-bd69-4e7e81d484bd (12886 bytes) [application/octet-stream]
+INFO:     10.42.0.178:49370 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.178:49370 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:45862 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:48178 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/107d04e0-8ded-43b3-8e43-52eb56d7223c (bytes size: 12881) ---
+Éxito: oci://bmo-documents/locust_tester/107d04e0-8ded-43b3-8e43-52eb56d7223c (12881 bytes) [application/octet-stream]
+--- DEBUG OCI: locust_tester/fc6d3dac-3291-4709-9f8c-bfd034326db4 (bytes size: 12774) ---
+Éxito: oci://bmo-documents/locust_tester/fc6d3dac-3291-4709-9f8c-bfd034326db4 (12774 bytes) [application/octet-stream]
+INFO:     10.42.0.178:38084 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.178:42222 - "POST /api/ingest HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/eef38ea8-4e27-4609-ad2b-503a7e48a4e8 (bytes size: 12994) ---
+Éxito: oci://bmo-documents/locust_tester/eef38ea8-4e27-4609-ad2b-503a7e48a4e8 (12994 bytes) [application/octet-stream]
+INFO:     10.42.0.178:57116 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:42222 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:39566 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.178:39566 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/a2bb7c0e-5542-413d-b647-02ff9cf6b8dd (bytes size: 12875) ---
+Éxito: oci://bmo-documents/locust_tester/a2bb7c0e-5542-413d-b647-02ff9cf6b8dd (12875 bytes) [application/octet-stream]
+INFO:     10.42.0.178:52830 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51058 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.178:56264 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51058 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33186 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:48594 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33280 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:33206 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:38926 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51040 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:48176 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:52268 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:45846 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:57938 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/22146658-c40d-4d05-b424-91650045a6e7 (bytes size: 12736) ---
+--- DEBUG OCI: locust_tester/6b8b51c0-bd43-40bf-a54b-9e5157c66c4d (bytes size: 12843) ---
+Éxito: oci://bmo-documents/locust_tester/22146658-c40d-4d05-b424-91650045a6e7 (12736 bytes) [application/octet-stream]
+INFO:     10.42.0.178:52960 - "POST /api/ask/stream HTTP/1.1" 200 OK
+Éxito: oci://bmo-documents/locust_tester/6b8b51c0-bd43-40bf-a54b-9e5157c66c4d (12843 bytes) [application/octet-stream]
+INFO:     10.42.0.178:48178 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51012 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.178:51012 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/5dadf829-1ee2-46cc-b71b-d5c32ce4055d (bytes size: 12812) ---
+Éxito: oci://bmo-documents/locust_tester/5dadf829-1ee2-46cc-b71b-d5c32ce4055d (12812 bytes) [application/octet-stream]
+INFO:     10.42.0.178:55722 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.178:48178 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.178:39566 - "POST /api/ask/stream HTTP/1.1" 200 OK
+
+Analsis langhsmith
+💸 Costo total registrado en este rango: $0.2472
+⏱️ Latencia promedio: 46287.03 ms

@@ -45,15 +45,19 @@ def get_database_url_and_args():
         db_url = f"postgresql://{user}:{password}@{host}:{port}/{db}"
         return db_url, {}
 
-def get_engine(echo=False, pool_timeout=10, pool_pre_ping=True):
+def get_engine(echo=False, pool_size=20, max_overflow=10, pool_timeout=30, pool_recycle=1800, pool_pre_ping=True):
     """
-    Creates and returns a SQLAlchemy Engine configured for the correct DB Provider.
+    Creates and returns a SQLAlchemy Engine configured for the correct DB Provider
+    with optimized pool settings for high concurrency.
     """
     db_url, connect_args = get_database_url_and_args()
     return create_engine(
         db_url,
         echo=echo,
         connect_args=connect_args,
+        pool_size=pool_size,
+        max_overflow=max_overflow,
         pool_timeout=pool_timeout,
+        pool_recycle=pool_recycle,
         pool_pre_ping=pool_pre_ping
     )

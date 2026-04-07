@@ -4,16 +4,17 @@ Un asistente personal de IA basado en la arquitectura **Self-RAG** (Retrieval-Au
 
 ## 🚀 Estado Actual del Proyecto
 
-Actualmente hemos **finalizado la Fase 5 (Cloud y Kubernetización)**. El sistema cuenta con una infraestructura robusta sobre Kubernetes (lista para OKE/Ampere A1), escalado inteligente **KEDA**, **Observabilidad** profesional (OpenTelemetry + Grafana Cloud) teniendo encuenta metricas, trazas y graficos. *Nota: El despliegue activo en el clúster cloud remoto ha quedado pospuesto como tarea pendiente.*
+Actualmente hemos **finalizado la Fase 7 (Estabilización, Stress Test y LLMOps)**. El sistema es ahora capaz de soportar alta concurrencia (30+ usuarios) sin fallos de memoria, con observabilidad avanzada y un sistema de seguridad stateless (Auth0) completamente funcional. Estamos iniciando la **Fase 8**, enfocada en la madurez del producto, gestión real de usuarios y grafos de conocimiento.
 
-**Hitos alcanzados (PreFase 5):**
-- **Orquestación K8s:** Despliegue de API, Workers y Consumidores en Kubernetes local.
-- **Auto-escalado:** Configuración de `ScaledObjects` (KEDA) y `HPA` (CPU).
-- **Observabilidad:** Pipeline de trazas y métricas con OTel Collector y Grafana Cloud.
-- **Backend Streaming:** Motor de respuestas en tiempo real para el chat.
+**Hitos alcanzados recientemente (Fase 7):**
+- **Stress Test Exitoso**: Soporta 30 usuarios simultáneos con 0% de errores lógicos.
+- **Gestión de Concurrencia**: Implementación de semáforos asínconos para proteger la RAM.
+- **Infraestructura de Producción**: Migración a Gunicorn con pool de conexiones optimizado y HPA tuning.
+- **Seguridad Robusta**: Integración total con Auth0 y validación stateless de JWT.
+- **Telemetría de Costos**: Seguimiento en tiempo real de tokens y gastos mediante LangSmith.
 
 > [!TIP]
-> Para el detalle técnico de la última fase, consulta [Fase 5: Kubernetización Local y Observabilidad](docs/fase5/prefase5_completa.md).
+> Para el detalle de la última fase, consulta [Fase 7: Estabilización y Stress Test](docs/fase_7_completa.md).
 
 ---
 
@@ -28,12 +29,14 @@ Actualmente hemos **finalizado la Fase 5 (Cloud y Kubernetización)**. El sistem
     *   *Nota: Se implementó la configuración y CI/CD para despliegue remoto. El despliegue real en el clúster remoto de Kubernetes queda pendiente.*
 *   ✅ **Fase 6: Frontend Ligero y Estabilización** (¡Completada!)
     *   Interfaz moderna básica (Next.js), Streaming UI, sistema de gestión de historiales de chat y migración de checkpointer LangGraph a PostgreSQL.
-*   ⏳ **Fase 7: Testing, Optimización y Análisis** (En proceso)
+*   ✅ **Fase 7: Estabilización, Stress Test y LLMOps** (¡Completada!)
+
     *   Optimización de parámetros del agente, pruebas anti-alucinaciones, análisis de latencias, costos (LLMs y Cloud), y rendimiento de recursos (Kubernetes local vs remoto).
-*   ⏳ **Fase 8: Tareas Pendientes y Mejoras Futuras** (Pendiente)
-    *   Gestión real de Usuarios y Sesiones (Frontend y Backend / Login, JWT).
-    *   GraphRAG con Neo4j para mapeo avanzado de relaciones.
-    *   Despliegue remoto K8s final (OCI/AWS).
+*   ⏳ **Fase 8: Madurez de Producto e Inteligencia de Grafos** (En progreso)
+    *   **Inteligencia**: GraphRAG (Neo4j), LLM Cache y Hybrid Search.
+    *   **Producto**: Sincronización DB Local de Usuarios, RBAC y Gestión de Cuotas.
+    *   **UX**: Feedback Loop (HITL), visualización del plan del agente y despliegue real en Vercel.
+    *   Ver detalle: [Fase 8: Roadmap Estratégico](docs/fase8/fase_8.md).
 
 ---
 
@@ -128,9 +131,3 @@ Luego de esto, puedes usar las colecciones provistas en `/postman` para interact
 ```bash
 python -m pytest src/tests/
 ```
-
-Acordarme los secretos de infisical, y el de ca de kafka.
-
-kubectl create secret generic kafka-ca-cert \
-  --from-file=ca.pem=./ca.pem \
-  -n personal-ai

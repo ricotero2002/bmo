@@ -108,13 +108,8 @@ WARNING:src.providers.storage.oci_storage_provider:Éxito: oci://bmo-documents/t
 
 x Poner fecha al subir archivos en el frontend
 x poder ver sus chunking y el archivo
-`POST /api/feedback
-Ver la planificacion en el frontend
-Poder acceder como link a las sources del frontend.
-No me mostro en el frontend que va a guardar un archivo.
-Probar generar el dataset
+x POST /api/feedback
 x No parece estar andando el guardar archivos, nunca se me inician instancias de los kafka consumers, nose si se estan mandando a kafka directamente.
-Ver porque hay 2 metricas distintas en grafana de los tokens.
 
 
 #### Frente 3: Telemetría, Costos y Pruebas de Estrés (Observabilidad)
@@ -137,3 +132,194 @@ Aprovechando que ya tienes OpenTelemetry, Prometheus y Grafana configurados, vam
 * **Herramienta de Carga:** Usa **Locust** o **K6** (escritos en Python/JS) para simular tráfico. Crea un script `locustfile.py` que envíe preguntas concurrentes al endpoint del chat.
 * **Prueba de Ingesta Masiva:** Simula la subida de 50 PDFs simultáneos a tu API y observa cómo la cola de Kafka/Celery crece.
 * **Validación de KEDA/HPA:** Mientras ejecutas Locust, abre `k9s` o el dashboard de Kubernetes. Observa si, al subir la CPU de los workers o el lag de Kafka, Kubernetes despliega nuevos Pods automáticamente para manejar la carga, y cómo se reduce a 1 Pod (o 0 si usas scale-to-zero con KEDA) cuando la prueba termina.
+
+
+¡Excelente iniciativa! Pasar a la fase de pruebas de estrés y monitoreo es el paso definitivo para graduar tu arquitectura a nivel "producción real". Además, como veo en tu captura de LangSmith, ya estás trackeando tokens, latencia y costos perfectamente, lo cual nos facilita mucho el trabajo.
+
+Aquí tienes el plan de acción completo, estructurado desde la instrumentación hasta la ejecución y medición con **Locust**, **LangSmith** y **Kubernetes**.
+
+---
+
+### Paso 1: Etiquetado (Tagging) para LangSmith
+
+Para no ensuciar tus métricas de uso real con miles de peticiones de prueba, necesitamos "etiquetar" las ejecuciones de estrés. LangSmith permite filtrar todo por `tags` o `metadata`.
+
+**Modificación en `agent.py`:**
+Cuando llames a `astream_events` o `ainvoke`, inyecta un tag dinámico. Puedes modificar tu endpoint en `endpoints.py` para que acepte un header oculto (ej. `X-Stress-Test: true`) y pasarlo al agente.
+
+```python
+# En agent.py (dentro de astream_chat)
+tags = ["agent_generation"]
+if user_info.get("is_stress_test"):
+    tags.append("stress_test_v1") # <-- Etiqueta clave para LangSmith
+
+config = {
+    "configurable": {
+        "thread_id": thread_id,
+        "user_id": user_id,
+    },
+    "tags": tags,
+    "metadata": {"test_type": "load_test"}
+}
+```
+
+---
+
+### Paso 2: Crear el Script de Locust (`locustfile.py`)
+
+Locust es ideal porque te permite escribir los flujos en Python puro. Vamos a crear un script que simule dos perfiles de usuarios: **Chatters** (piden respuestas por streaming) e **Ingestors** (suben PDFs).
+
+Instala Locust y la librería para eventos (SSE):
+`pip install locust sseclient-py`
+
+Crea este archivo `locustfile.py`:
+
+```python
+import time
+import json
+import uuid
+from locust import HttpUser, task, between, events
+
+class BMOUser(HttpUser):
+    wait_time = between(1, 3) # Espera entre 1 y 3 segundos entre tareas
+    host = "http://localhost:8000" # Cambia por tu Ingress URL si estás en k8s
+
+    @task(3) # Peso 3: Es 3 veces más probable que un usuario chatee a que suba un PDF
+    def chat_streaming(self):
+        thread_id = str(uuid.uuid4())
+        payload = {
+            "message": "Resume los puntos clave del documento subido.",
+            "thread_id": thread_id,
+            "prompt_version": "rag_v3",
+            "user_info": {"user_id": "locust_tester", "is_stress_test": True}
+        }
+        
+        start_time = time.time()
+        ttft_recorded = False
+
+        # Usamos stream=True para capturar los chunks en tiempo real
+        with self.client.post("/api/ask/stream", json=payload, stream=True, catch_response=True) as response:
+            if response.status_code == 200:
+                for line in response.iter_lines():
+                    if line:
+                        decoded_line = line.decode('utf-8')
+                        
+                        # Capturar TTFT (Time To First Token)
+                        if not ttft_recorded and '"type": "token"' in decoded_line:
+                            ttft = time.time() - start_time
+                            events.request.fire(
+                                request_type="SSE",
+                                name="TTFT",
+                                response_time=ttft * 1000,
+                                response_length=0,
+                            )
+                            ttft_recorded = True
+
+                        if "[DONE]" in decoded_line:
+                            break
+                            
+                # Registrar el tiempo total (Latencia de Respuesta Completa)
+                total_time = time.time() - start_time
+                events.request.fire(
+                    request_type="SSE",
+                    name="Total Chat Time",
+                    response_time=total_time * 1000,
+                    response_length=0,
+                )
+                response.success()
+            else:
+                response.failure(f"Error {response.status_code}")
+
+    @task(1) # Peso 1: Tarea de ingesta masiva
+    def upload_document(self):
+        # Crear un archivo PDF falso en memoria para no saturar tu disco
+        dummy_pdf_content = b"%PDF-1.4\n%Fake PDF content for stress testing...\n%%EOF"
+        files = {
+            'file': ('test_doc.pdf', dummy_pdf_content, 'application/pdf')
+        }
+        data = {
+            'user_id': 'locust_tester',
+            'document_date': '2026-04-07'
+        }
+        
+        with self.client.post("/api/ingest", files=files, data=data, catch_response=True) as response:
+            if response.status_code == 200:
+                response.success()
+            else:
+                response.failure(f"Ingest Failed: {response.text}")
+```
+
+---
+
+### Paso 3: Ejecución y Validación de KEDA/HPA
+
+Abre tres terminales para tener visibilidad total:
+
+**Terminal 1 (Lanzar el ataque con Locust):**
+```bash
+locust -f locustfile.py
+```
+Abre tu navegador en `http://localhost:8089`. Configura **50 usuarios concurrentes** con un spawn rate de **5 usuarios por segundo**. Inicia la prueba.
+
+**Terminal 2 (Monitor de Kubernetes - Pods):**
+Para ver en tiempo real cómo Kubernetes reacciona a la CPU y la cola de Kafka:
+```bash
+kubectl get pods -n personal-ai -w
+```
+*Deberías empezar a ver Pods de `api-deployment` y `worker-deployment` pasando a estado `ContainerCreating` a medida que la carga aumenta.*
+
+**Terminal 3 (Monitor de Kafka/KEDA):**
+KEDA lee el lag de Kafka para escalar los workers. Puedes monitorear el HPA (Horizontal Pod Autoscaler) generado por KEDA:
+```bash
+kubectl get hpa -n personal-ai -w
+```
+*Verás el campo `TARGETS` subir (ej. `500/100` mensajes de lag) y la columna `REPLICAS` escalar de 1 a 5, 10, etc.*
+
+---
+
+### Paso 4: ¿Dónde y Cómo Medir cada Métrica?
+
+#### 1. TTFT (Time To First Token) y Tiempo Total
+* **Dónde medirlo:** En la interfaz web de Locust (`http://localhost:8089`).
+* **Cómo leerlo:** En la pestaña "Statistics", verás dos filas personalizadas llamadas `SSE TTFT` y `SSE Total Chat Time`. Locust te dará el promedio, el percentil 95 y el máximo bajo carga extrema.
+
+#### 2. Latencia Vectorial (Pinecone) y Costos
+* **Dónde medirlo:** En tu dashboard de **LangSmith**.
+* **Cómo leerlo:** 1. Ve a LangSmith y usa el filtro de búsqueda: `has_tag("stress_test_v1")`.
+    2. Como se ve en tu captura, las columnas **Tokens** y **Cost** te darán el gasto exacto de la prueba de estrés.
+    3. Para la *Latencia Vectorial*, haz clic en cualquier ejecución del test. Busca en el árbol de ejecución el nodo correspondiente a `knowledge_base_retriever` o `grade_documents`. El tiempo marcado a la derecha de ese nodo específico es tu latencia neta de Pinecone + Red.
+
+#### 3. Latencia de Ingesta (El viaje completo)
+* **Dónde medirlo:** En los dashboards de Grafana/Prometheus o en tu base de datos SQL (`status_provider`).
+* **Cómo leerlo:** Dado que en tu archivo `kafka_consumer.py` ya configuraste OpenTelemetry y un exportador de métricas (`celery-exporter`), puedes armar un panel en Grafana que mida la diferencia de tiempo entre que el API emite la métrica `docs_processed` con status "ingesting" y el worker emite la métrica final "kafka_success". 
+* **Alternativa SQL:** Tu `status_provider` guarda los estados. Puedes hacer un script post-prueba que consulte la tabla de ingestas y calcule: `promedio(updated_at - created_at) donde status = 'completed' y user_id = 'locust_tester'`.
+
+
+Tuve probelmas con la saturazion entonces hice cambios
+Mejoras de Arquitectura
+1. Servidor de Producción (Gunicorn)
+Dockerfile
+: Se ha actualizado el comando de inicio para la API de producción. Ahora utiliza Gunicorn con workers de Uvicorn, lo que permite manejar múltiples peticiones en paralelo aprovechando todos los núcleos del procesador.
+2. Pool de Conexiones a Base de Datos
+core.py
+: Se han configurado parámetros profesionales en SQLAlchemy para evitar cuellos de botella en la base de datos:
+pool_size=20: Mantiene 20 conexiones abiertas listas para usar.
+max_overflow=10: Permite hasta 10 conexiones adicionales durante picos de tráfico.
+pool_timeout=30: Evita errores inmediatos si la base de datos está temporalmente saturada.
+3. Escalado Proactivo (K8s)
+api-hpa.yaml
+: Se redujo el umbral de CPU del 70% al 60%. Esto hace que Kubernetes levante nuevas réplicas de forma más agresiva, antes de que los Pods existentes se saturen.
+apps-deployment.yaml
+: Se añadió --prefetch-multiplier=1 al comando del worker de Celery para prevenir errores de memoria (OOM) durante el procesamiento de múltiples documentos pesados.
+
+# Para luego 
+Ver la planificacion en el frontend
+Poder acceder como link a las sources del frontend.
+No me mostro en el frontend que va a guardar un archivo.
+Ver los modelos de los llms en grafana
+Arreglar el kafka producer usado para guardar archivos:
+  %3|1775573645.546|SSL|rdkafka#producer-1| [thrd:app]: kafka: error:12800067:DSO support routines::could not load the shared library: filename(/usr/lib64/ossl-modules/legacy.so): /usr/lib64/ossl-modules/legacy.so: cannot open shared object file: No such file or directory
+%3|1775573645.546|SSL|rdkafka#producer-1| [thrd:app]: kafka: error:12800067:DSO support routines::could not load the shared library
+Error al publicar nota en Kafka: KafkaError{code=_INVALID_ARG,val=-186,str="Failed to create producer: Failed to load OpenSSL provider "legacy": error:07880025:common libcrypto routines::reason(524325): name=legacy"}
+INFO:     10.42.0.100:42650 - "GET /api/chats?user_id=agustin HTTP/1.1" 200 OK
+INFO:     10.42.0.100:34130 - "GET /api/chats/05f023ba-9e70-4adc-8fb4-cdff087f94da/messages HTTP/1.1" 200 OK

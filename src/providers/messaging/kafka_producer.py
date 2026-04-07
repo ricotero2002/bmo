@@ -21,6 +21,9 @@ class KafkaProducerWrapper:
     _instance: Optional["KafkaProducerWrapper"] = None
 
     def __init__(self):
+        # Importamos la configuración centralizada que ya tiene el fix de OpenSSL
+        from src.providers.messaging.kafka_config import build_kafka_conf
+        
         conf = build_kafka_conf()
         self._producer = Producer(conf)
         logger.info(

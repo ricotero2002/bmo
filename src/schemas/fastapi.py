@@ -25,6 +25,6 @@ class FeedbackRequest(BaseModel):
     message_id: Optional[str] = None
     user_prompt: Optional[str] = None
     ai_response: Optional[str] = None
-    tools_used: Optional[dict] = None
+    tools_used: Optional[Any] = None
     score: int
     user_correction: Optional[str] = None
