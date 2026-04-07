@@ -43,7 +43,7 @@ PERMANENT_EXCEPTIONS = (
     max_retries=5,
     default_retry_delay=60,
 )
-def process_document_task(self, doc_id: str, filename: str, user_id: Optional[str] = None, object_name: Optional[str] = None) -> Dict[str, Any]:
+def process_document_task(self, doc_id: str, filename: str, user_id: Optional[str] = None, object_name: Optional[str] = None, document_date: Optional[str] = None) -> Dict[str, Any]:
     """
     Task de Celery para procesar documentos de forma asíncrona.
     1. Descarga el archivo desde MinIO usando el object_name (o doc_id).
@@ -87,24 +87,29 @@ def process_document_task(self, doc_id: str, filename: str, user_id: Optional[st
         # Usamos el doc_id como clave primaria lógica en el record manager
         logger.info(f"Creando documento")
         status_provider.update_status(job_uuid, "documenting")
-        document = extraction_service.create_document(text, filename)
-        document.metadata.update({
+        document = extraction_service.create_document(text, filename, document_date=document_date)
+        
+        # --- Preparar Metadatos Limpios para Pinecone ---
+        # Pinecone RECHAZA valores 'null'. Filtramos cualquier valor None.
+        metadata_to_add = {
             "source": doc_id,
             "user_id": user_id,
             "filename": filename
-        })
-
+        }
+        clean_metadata = {k: v for k, v in metadata_to_add.items() if v is not None}
+        
         # 5. Chunking
         logger.info(f"Procesando chunks para {filename}")
         status_provider.update_status(job_uuid, "chunking")
+        
+        # Actualizamos el documento original (opcional, pero consistente)
+        document.metadata.update(clean_metadata)
+        
         chunks = chunking_service.process(document, LLMFactory)
         
-        # Aseguramos que todos los chunks hereden metadatos
+        # Aseguramos que todos los chunks hereden los metadatos limpios
         for chunk in chunks:
-            chunk.metadata.update({
-                "source": doc_id,
-                "user_id": user_id
-            })
+            chunk.metadata.update(clean_metadata)
         
         # 6. Indexing (Embedding & Storing)
         status_provider.update_status(job_uuid, "embedding")

@@ -54,9 +54,10 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app
 
-# Solo curl para healthchecks (sin gcc)
+# Solo curl y ca-certs para healthchecks y Kafka (sin gcc)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    ca-certificates \
     libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -83,7 +84,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/api/health || exit 1
 
-CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["gunicorn", "src.api.main:app", "-w", "2", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000"]
 
 
 # ==============================================================
@@ -111,6 +112,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    ca-certificates \
     libpq5 \
     && rm -rf /var/lib/apt/lists/*
 

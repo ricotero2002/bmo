@@ -86,3 +86,16 @@ class Message(Base):
     content = Column(Text, nullable=False)
     parts = Column(JSONText, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class ChatFeedback(Base):
+    __tablename__ = "chat_feedback"
+
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
+    thread_id = Column(String(255), nullable=False, index=True)
+    message_id = Column(String(255), nullable=True)
+    user_prompt = Column(Text, nullable=True)
+    ai_response = Column(Text, nullable=True)
+    tools_used = Column(JSONText, nullable=True)
+    score = Column(Integer, nullable=False)  # 1 for 👍, -1 for 👎
+    user_correction = Column(Text, nullable=True)
+    timestamp = Column(DateTime, default=datetime.utcnow)

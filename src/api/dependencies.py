@@ -46,5 +46,34 @@ def get_deleting():
     from src.service.delete_file import DeleteOrchestrator
     return DeleteOrchestrator()
 
+import jwt
+from jwt import PyJWKClient
+from fastapi import Security, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from src.core.config import settings
+
 def get_chat_provider(request: Request):
     return request.app.state.chat_provider
+
+security = HTTPBearer()
+
+# Esto descarga la llave pública de Auth0 para verificar la firma
+jwks_url = f"https://{settings.AUTH0_DOMAIN}/.well-known/jwks.json"
+jwks_client = PyJWKClient(jwks_url)
+
+def verify_token(credentials: HTTPAuthorizationCredentials = Security(security)):
+    token = credentials.credentials
+    try:
+        signing_key = jwks_client.get_signing_key_from_jwt(token).key
+        payload = jwt.decode(
+            token,
+            signing_key,
+            algorithms=settings.ALGORITHMS,
+            audience=settings.API_AUDIENCE,
+            issuer=f"https://{settings.AUTH0_DOMAIN}/"
+        )
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expirado")
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Token inválido: {str(e)}")

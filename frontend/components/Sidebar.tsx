@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { MessageSquare, PlusCircle, Loader2, Database } from "lucide-react";
+import { MessageSquare, PlusCircle, Loader2, Database, Trash2 } from "lucide-react";
 import { useUser } from "@/app/context/UserContext";
 import { fetchChats, Chat } from "@/services/api";
 
@@ -11,9 +11,10 @@ interface SidebarProps {
   onSelectChat: (threadId: string) => void;
   onNewChat: () => void;
   onManageDocuments: () => void;
+  onDeleteChat: (threadId: string) => void;
 }
 
-export default function Sidebar({ currentThreadId, onSelectChat, onNewChat, onManageDocuments }: SidebarProps) {
+export default function Sidebar({ currentThreadId, onSelectChat, onNewChat, onManageDocuments, onDeleteChat }: SidebarProps) {
   const { userId } = useUser();
 
   const { data: chats, isLoading, isError } = useQuery<Chat[]>({
@@ -48,18 +49,34 @@ export default function Sidebar({ currentThreadId, onSelectChat, onNewChat, onMa
         )}
 
         {chats?.map((chat) => (
-          <button
+          <div
             key={chat.thread_id}
-            onClick={() => onSelectChat(chat.thread_id)}
-            className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center gap-3 truncate ${
+            className={`w-full group flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors ${
               currentThreadId === chat.thread_id
                 ? "bg-zinc-200 dark:bg-zinc-800 font-medium"
                 : "hover:bg-zinc-100 dark:hover:bg-zinc-900 text-zinc-600 dark:text-zinc-400"
             }`}
           >
-            <MessageSquare size={16} className="shrink-0" />
-            <span className="truncate">{chat.title || "New Conversation"}</span>
-          </button>
+            <button
+              onClick={() => onSelectChat(chat.thread_id)}
+              className="flex items-center gap-3 truncate flex-1 text-left"
+            >
+              <MessageSquare size={16} className="shrink-0" />
+              <span className="truncate">{chat.title || "New Conversation"}</span>
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (window.confirm("Are you sure you want to delete this chat?")) {
+                  onDeleteChat(chat.thread_id);
+                }
+              }}
+              className="shrink-0 opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-red-500 transition-all p-1"
+              title="Delete Chat"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
         ))}
 
         {!isLoading && !isError && chats?.length === 0 && (

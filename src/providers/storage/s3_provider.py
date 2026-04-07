@@ -59,6 +59,11 @@ class S3StorageProvider(StorageProvider):
         # URL prefirmada válida por 1 hora
         return self.client.generate_presigned_url(
             "get_object",
-            Params={"Bucket": bucket, "Key": object_name},
+            Params={
+                "Bucket": bucket, 
+                "Key": object_name,
+                "ResponseContentDisposition": "inline",
+                "ResponseContentType": "text/plain" 
+            },
             ExpiresIn=3600,
         )

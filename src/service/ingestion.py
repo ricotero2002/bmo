@@ -38,13 +38,30 @@ class ExtractionService:
                     file_hash: str = None,
                     user_id: str = None,
                     page_number: int = None,
-                    chunk_index: int = None) -> Document:
+                    chunk_index: int = None,
+                    document_date: str = None) -> Document:
         """Envuelve el texto en el formato que espera LangChain."""
+        # Manejo de fecha
+        created_at_ts = datetime.now(timezone.utc).timestamp()
+        has_custom_date = False
+        if document_date:
+            try:
+                # Intentamos parsear YYYY-MM-DD
+                parsed_date = datetime.strptime(document_date[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                created_at_ts = parsed_date.timestamp()
+                has_custom_date = True
+            except ValueError:
+                logging.warning(f"Formato de document_date inválido ({document_date}). Usando fecha actual.")
+
         metadata = {
             "source": filename,
-            "created_at": datetime.now(timezone.utc).timestamp(),  # Unix timestamp (float)
+            "created_at": created_at_ts,  # Unix timestamp (float)
         }
         
+        if has_custom_date:
+            metadata["custom_date"] = True
+            metadata["document_date_str"] = document_date[:10]
+
         # Pinecone RECHAZA valores nulos. Solo insertamos si tienen un valor real.
         if file_hash is not None:
             metadata["file_hash"] = file_hash

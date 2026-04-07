@@ -7,7 +7,7 @@ spec:
   scaleTargetRef:
     name: worker-deployment # A quién vamos a escalar (Deployment que creamos antes)
   minReplicaCount: 0  # <--- MAGIA: Escala a cero si no hay trabajo (Ahorras RAM)
-  maxReplicaCount: 5
+  maxReplicaCount: 3
   triggers:
   - type: rabbitmq
     metadata:

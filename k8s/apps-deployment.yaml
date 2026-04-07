@@ -67,9 +67,11 @@ spec:
         imagePullPolicy: Never # Importante para usar imágenes locales importadas
         resources:
           requests:
-            cpu: "100m"
+            cpu: "200m"
+            memory: "512Mi"
           limits:
-            cpu: "500m"
+            cpu: "2000m"
+            memory: "2Gi"
         ports:
         - containerPort: 8000
         envFrom:
@@ -106,7 +108,7 @@ spec:
       - name: worker
         image: personal_ai_worker:latest
         imagePullPolicy: Never
-        command: ["celery", "-A", "src.workers.celery_app", "worker", "--loglevel=info", "--concurrency=2"]
+        command: ["celery", "-A", "src.workers.celery_app", "worker", "--loglevel=info", "--concurrency=2", "--prefetch-multiplier=1"]
         envFrom:
         - secretRef:
             name: app-secrets # Sincronizado vía Infisical

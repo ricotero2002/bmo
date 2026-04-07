@@ -19,3 +19,12 @@ class AskRequest(BaseModel):
 class DeleteRequest(BaseModel):
     doc_id: str
     user_id: str
+
+class FeedbackRequest(BaseModel):
+    thread_id: str
+    message_id: Optional[str] = None
+    user_prompt: Optional[str] = None
+    ai_response: Optional[str] = None
+    tools_used: Optional[Any] = None
+    score: int
+    user_correction: Optional[str] = None

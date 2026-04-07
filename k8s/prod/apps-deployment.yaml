@@ -65,13 +65,22 @@ spec:
       - name: api
         image: personal_ai_api:latest
         imagePullPolicy: Never
+        # EL ARREGLO DEL COMANDO: Quitamos el limit-concurrency 15 (ahora lo maneja el Semáforo interno)
+        command: [
+          "uvicorn", 
+          "src.api.main:app", 
+          "--host", "0.0.0.0", 
+          "--port", "8000", 
+          "--workers", "2"
+        ]
+        # EL ARREGLO DE LOS RECURSOS: Estrategia VIP v2 (RAM segura para el Semáforo)
         resources:
           requests:
-            cpu: "100m"
-            memory: "256Mi"
+            cpu: "150m"
+            memory: "350Mi"
           limits:
-            cpu: "500m"
-            memory: "512Mi"
+            cpu: "1500m"
+            memory: "2Gi"
         ports:
         - containerPort: 8000
         envFrom:
@@ -83,6 +92,16 @@ spec:
         env:
           - name: OTEL_SERVICE_NAME
             value: "personal-ai-api"
+          - name: KAFKA_SSL_CA_LOCATION
+            value: "/etc/kafka/certs/ca.pem"
+        volumeMounts:
+          - name: kafka-ca-cert
+            mountPath: /etc/kafka/certs
+            readOnly: true
+      volumes:
+        - name: kafka-ca-cert
+          secret:
+            secretName: kafka-ca-cert
 
 ---
 # 5. Deployment del Worker (Lo que KEDA va a escalar)
@@ -112,11 +131,11 @@ spec:
         command: ["celery", "-A", "src.workers.celery_app", "worker", "--loglevel=info", "--concurrency=2", "-E"]
         resources:
           requests:
-            cpu: "100m"
-            memory: "256Mi"
+            cpu: "50m"
+            memory: "200Mi"
           limits:
             cpu: "500m"
-            memory: "1Gi"
+            memory: "768Mi"
         envFrom:
         - secretRef:
             name: app-secrets
@@ -174,4 +193,4 @@ spec:
   - name: metrics
     port: 9808
     targetPort: 9808
-  type: ClusterIP
+  type: ClusterIP

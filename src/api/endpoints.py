@@ -1,9 +1,10 @@
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Header
 from fastapi.responses import StreamingResponse, JSONResponse
-from src.schemas.fastapi import QueryRequest, QueryResponse, AskRequest, DeleteRequest
+from src.schemas.fastapi import QueryRequest, QueryResponse, AskRequest, DeleteRequest, FeedbackRequest
 from src.api.dependencies import *
 from celery.result import AsyncResult
 from src.workers.celery_app import celery_app
+from langchain_core.messages import AIMessage
 import uuid
 from typing import Optional, List
 from starlette.background import BackgroundTask
@@ -13,14 +14,33 @@ import asyncio
 #ver como exportar el router para main
 router = APIRouter()
 
+# --- EL PATOVICA ASÍNCRONO ---
+# Permitimos un máximo de 10 ejecuciones pesadas (LLM) en paralelo por cada Worker.
+# Esto evita picos de RAM (>2GB) pero permite que las peticiones esperen en fila en vez de dar 503.
+llm_semaphore = asyncio.Semaphore(20)
+
 @router.get("/health")
 async def health_check():
     return {"status": "ok", "message": "Personal AI Assistant API is running"}
 
+
+
+# --- EL ENDPOINT PROTEGIDO ---
+@router.get("/seguro")
+async def endpoint_protegido(user_payload: dict = Depends(verify_token)):
+    user_id = user_payload.get("sub")
+    # Si ves esto, significa que el token es 100% real y válido
+    return {
+        "mensaje": "¡Éxito! BMO te reconoce.",
+        "tu_id_auth0": user_id,
+        "payload_completo": user_payload
+    }
+
 @router.post("/ingest")
 async def ingest_document(
     file: UploadFile = File(...),
-    user_id: Optional[str] = None,
+    user_id: Optional[str] = Form(None),
+    document_date: Optional[str] = Form(None),
     orchestrator = Depends(get_orchestrator)
 ):
     """
@@ -36,7 +56,10 @@ async def ingest_document(
             filename=file.filename,
             content=content,
             user_id=user_id,
-            metadata={"content_type": file.content_type}
+            metadata={
+                "content_type": file.content_type,
+                "document_date": document_date
+            }
         )
         
         return {
@@ -50,7 +73,8 @@ async def ingest_document(
 @router.post("/ingest/batch")
 async def ingest_batch(
     files: List[UploadFile] = File(...),
-    user_id: Optional[str] = None,
+    user_id: Optional[str] = Form(None),
+    document_date: Optional[str] = Form(None),
     orchestrator = Depends(get_orchestrator)
 ):
     """
@@ -70,7 +94,11 @@ async def ingest_batch(
                 filename=file.filename,
                 content=content,
                 user_id=user_id,
-                metadata={"content_type": file.content_type, "batch": True}
+                metadata={
+                    "content_type": file.content_type, 
+                    "batch": True,
+                    "document_date": document_date
+                }
             )
             results.append({**res, "filename": file.filename})
         except Exception as e:
@@ -97,6 +125,104 @@ async def get_ingestion_status(
     except ValueError:
         return {"error": "Invalid UUID format", "status_code": 400}
 
+@router.get("/debug/document/{doc_id}/chunks")
+async def get_document_chunks(
+    doc_id: str,
+    db = Depends(get_vector_db),
+    record_manager = Depends(get_record_manager)
+):
+    """Lista los chunks insertados en la base Vectorial por doc_id"""
+    try:
+        # 1. Intentamos usar RecordManager para obtener IDs específicos si el db no tiene get() fácil
+        # Esto es vital para Pinecone (GeminiEmbedder falla con empty search "")
+        pinecone_ids = []
+        try:
+            pinecone_ids = record_manager.list_keys(group_ids=[doc_id])
+        except Exception as e:
+            print(f"RecordManager not available or failed: {e}")
+
+        # 2. Si tenemos IDs, los recuperamos directamente
+        if pinecone_ids:
+            chunks = []
+            # Pinecone VectorStore
+            if hasattr(db, "_index"):
+                response = db._index.fetch(ids=pinecone_ids)
+                vectors = getattr(response, "vectors", {})
+                for p_id in pinecone_ids:
+                    vector_data = vectors.get(p_id)
+                    if vector_data:
+                        metadata = getattr(vector_data, "metadata", {})
+                        chunks.append({
+                            "id": p_id,
+                            "page_content": metadata.get("text") or metadata.get("page_content") or "",
+                            "metadata": metadata
+                        })
+                return {"chunks": chunks, "total_chunks": len(chunks), "doc_id": doc_id}
+            
+            # Chroma or generic .get()
+            elif hasattr(db, "get"):
+                res = db.get(ids=pinecone_ids, include=["metadatas", "documents"])
+                docs = res.get("documents", [])
+                metas = res.get("metadatas", [])
+                for i in range(len(docs)):
+                    chunks.append({
+                        "id": pinecone_ids[i],
+                        "page_content": docs[i] if docs else "",
+                        "metadata": metas[i] if i < len(metas) else {}
+                    })
+                return {"chunks": chunks, "total_chunks": len(chunks), "doc_id": doc_id}
+
+        # 3. Fallback: Si NO tenemos IDs de RecordManager, intentamos el .get() directo por filtro (Chroma)
+        if hasattr(db, "_collection"):
+            res = db._collection.get(where={"doc_id": doc_id})
+            chunks = []
+            if res and "ids" in res:
+                for i in range(len(res["ids"])):
+                    chunks.append({
+                        "id": res["ids"][i],
+                        "page_content": res["documents"][i] if "documents" in res and res["documents"] else "",
+                        "metadata": res["metadatas"][i] if "metadatas" in res and res["metadatas"] else {}
+                    })
+            return {"chunks": chunks, "total_chunks": len(chunks), "doc_id": doc_id}
+
+        # 4. Si todo lo anterior falla, no hacemos similarity_search("") para evitar crash de Gemini
+        return {
+            "chunks": [],
+            "total_chunks": 0,
+            "doc_id": doc_id,
+            "message": "No se pudieron recuperar chunks. Use RecordManager IDs o Chroma."
+        }
+    except Exception as e:
+        return {"error": str(e), "status_code": 500}
+
+@router.get("/debug/document")
+async def list_documents(
+    user_id: str,
+    status_provider = Depends(get_status_provider)
+):
+    """Lista todos los documentos ingeridos para un usuario específico (para depuración)."""
+    try:
+        # Usamos el engine de status_provider para hacer una consulta directa
+        from sqlalchemy import text
+        query = text("SELECT doc_id, source_path, status, created_at, file_hash FROM ingestion_jobs WHERE user_id = :user_id ORDER BY created_at DESC")
+        
+        with status_provider.engine.connect() as conn:
+            result = conn.execute(query, {"user_id": user_id})
+            # Convertimos a lista de diccionarios
+            documents = []
+            for row in result:
+                # row es un objeto que soporta mapeo si es SQLAlchemy 2.0+ o tiene _mapping
+                r = row._mapping if hasattr(row, "_mapping") else dict(row)
+                documents.append(dict(r))
+                
+        return {
+            "user_id": user_id,
+            "documents": documents,
+            "total": len(documents)
+        }
+    except Exception as e:
+        return {"error": str(e), "status_code": 500}
+
 @router.post("/delete_file")
 async def delete_document(
     request: DeleteRequest,
@@ -109,6 +235,8 @@ async def delete_document(
         job = status_provider.get_job(document_uuid)
         if not job:
             return {"error": "Job not found", "status_code": 404}
+
+        # O si el documento aparece distinto que indexed
 
         result = await get_deleting.delete_file(
             doc_id=document_uuid,
@@ -134,39 +262,58 @@ async def query_rag(
     db = Depends(get_vector_db),
     embedder = Depends(get_embeddings)
 ):
+    import logging
+    from src.tools.metadata_filter import build_metadata_filter
+    logger = logging.getLogger(__name__)
+
     # 1. Recuperar contexto (db.similarity_search) con filtro de usuario
-    filter_opts = {}
-    if request.user_id:
-        filter_opts["user_id"] = request.user_id
+    filter_opts = build_metadata_filter(user_id=request.user_id)
         
-    results = db.similarity_search(
-        request.query, 
-        k=3,
-        filter=filter_opts if filter_opts else None
-    )
+    logger.info(f"[/query] Ejecutando búsqueda semántica: '{request.query}' (Filtros: {filter_opts})")
     
-    # Extraemos el contenido de los documentos encontrados
-    context = [doc.page_content for doc in results] if results else []
-    
-    # 2. Generar respuesta con LLM
-    return {"context": context}
+    try:
+        results = db.similarity_search(
+            request.query, 
+            k=3,
+            filter=filter_opts if filter_opts else None
+        )
+        
+        logger.info(f"[/query] Se encontraron {len(results)} documentos.")
+        for i, doc in enumerate(results):
+            logger.debug(f"[/query] Doc {i+1} Metadatos: {doc.metadata}")
+
+        # Extraemos el contenido de los documentos encontrados
+        context = [doc.page_content for doc in results] if results else []
+        
+        # 2. Generar respuesta con LLM
+        return {"context": context}
+    except Exception as e:
+        logger.error(f"[/query] Error en búsqueda semántica: {e}")
+        return {"context": [], "error": str(e)}
+
 
 @router.post("/ask")
 async def ask_agent(
     request: AskRequest,
+    x_stress_test: Optional[bool] = Header(None, alias="X-Stress-Test"),
     agent_service = Depends(get_agent_service)
 ):
     try:
         # Si thread_id está vacío, creamos una nueva conversación
         thread_id = request.thread_id or str(uuid.uuid4())
         user_context = request.user_info or {}
+        
+        # Inyectar el flag de stress test si el header está presente
+        if x_stress_test:
+            user_context["is_stress_test"] = True
             
-        result = await agent_service.chat(
-            message=request.message, 
-            thread_id=thread_id,
-            user_info=user_context,
-            prompt_version=request.prompt_version
-        )
+        async with llm_semaphore:
+            result = await agent_service.chat(
+                message=request.message, 
+                thread_id=thread_id,
+                user_info=user_context,
+                prompt_version=request.prompt_version
+            )
         # Obtener el último mensaje de IA
         messages = result.get("messages", [])
         last_message = ""
@@ -224,6 +371,7 @@ async def get_messages(
 @router.post("/ask/stream")
 async def ask_agent_stream(
     request: AskRequest,
+    x_stress_test: Optional[bool] = Header(None, alias="X-Stress-Test"),
     agent_service = Depends(get_agent_service),
     chat_provider = Depends(get_chat_provider)
 ):
@@ -240,48 +388,54 @@ async def ask_agent_stream(
         
         try:
             user_context = request.user_info or {}
+            if x_stress_test:
+                user_context["is_stress_test"] = True
             
-            # Llamamos al nuevo método asíncrono que creamos en agent.py
-            async for event in agent_service.astream_chat(
-                message=request.message, 
-                thread_id=thread_id,
-                user_info=user_context,
-                prompt_version=request.prompt_version
-            ):
-                kind = event["event"]
-                tags = event.get("tags", [])
-                
-                # Si arranca la generación principal del agente, reseteamos el buffer de respuesta 
-                # (útil si hay reintentos por alucinaciones para no guardar basura)
-                if kind == "on_chat_model_start" and "agent_generation" in tags:
-                    if "".join(full_response_text).strip():
-                        retry_token = "\n\n*(Borrador descartado: corrigiendo imprecisiones detectadas...)*\n\n"
-                        yield f"data: {json.dumps({'type': 'token', 'content': retry_token})}\n\n"
-                    full_response_text.clear()
-                
-                # 1. Detectar cuando el LLM está transmitiendo la respuesta final
-                if kind == "on_chat_model_stream" and "agent_generation" in tags:
-                    content = event["data"]["chunk"].content
-                    if content:
-                        full_response_text.append(content)
-                        # Enviamos tipo 'token' para que el frontend lo sume al chat
-                        yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
-                
-                # 2. Detectar cuando se llama a una herramienta (Retriever)
-                elif kind == "on_tool_start":
-                    tool_name = event["name"]
-                    if tool_name == "knowledge_base_retriever":
-                        yield f"data: {json.dumps({'type': 'status', 'content': 'Buscando en la base de conocimientos...'})}\n\n"
-                    else:
-                        yield f"data: {json.dumps({'type': 'status', 'content': f'Usando herramienta: {tool_name}...'})}\n\n"
-                
-                # 3. Detectar nodos de validación (Guardrails/Graders)
-                elif kind == "on_chain_start":
-                    node_name = event.get("name")
-                    if node_name == "grade_documents":
-                        yield f"data: {json.dumps({'type': 'status', 'content': 'Evaluando relevancia de los documentos...'})}\n\n"
-                    elif node_name == "grade_hallucinations":
-                        yield f"data: {json.dumps({'type': 'status', 'content': 'Verificando alucinaciones...'})}\n\n"
+            # MAGIA AQUÍ: Entramos a la sala de espera (Semáforo).
+            # Solo avanzará si hay menos de 10 peticiones procesándose en este worker.
+            async with llm_semaphore:
+                async for event in agent_service.astream_chat(
+                    message=request.message, 
+                    thread_id=thread_id,
+                    user_info=user_context,
+                    prompt_version=request.prompt_version
+                ):
+                    kind = event["event"]
+                    tags = event.get("tags", [])
+                    
+                    if kind == "on_chat_model_start" and "agent_generation" in tags:
+                        if "".join(full_response_text).strip():
+                            yield f"data: {json.dumps({'type': 'status', 'content': 'Corrigiendo imprecisiones detectadas...'})}\n\n"
+                        full_response_text.clear()
+                        
+                    # --- FIX: CAPTURA DEL PLAN DE EJECUCIÓN ---
+                    elif kind == "on_chain_end" and event.get("name") == "task_planner":
+                        output = event.get("data", {}).get("output", {})
+                        if isinstance(output, dict) and "task_plan" in output:
+                            yield f"data: {json.dumps({'type': 'plan', 'data': output['task_plan']})}\n\n"
+                            
+                    elif kind == "on_chat_model_stream" and "agent_generation" in tags:
+                        content = event["data"]["chunk"].content
+                        if content:
+                            full_response_text.append(content)
+                            yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
+                    
+                    # --- FIX: CAPTURA DE INPUTS DE LA HERRAMIENTA (Para Status detallado) ---
+                    elif kind == "on_tool_start":
+                        tool_name = event["name"]
+                        tool_input = event.get("data", {}).get("input", {})
+                        yield f"data: {json.dumps({'type': 'tool-start', 'data': tool_name, 'input': tool_input})}\n\n"
+    
+                    elif kind == "on_tool_end":
+                        tool_name = event["name"]
+                        yield f"data: {json.dumps({'type': 'tool-end', 'data': tool_name})}\n\n"
+                    
+                    elif kind == "on_chain_start":
+                        node_name = event.get("name")
+                        if node_name == "grade_documents":
+                            yield f"data: {json.dumps({'type': 'status', 'content': 'Evaluando relevancia de los documentos...'})}\n\n"
+                        elif node_name == "grade_hallucinations":
+                            yield f"data: {json.dumps({'type': 'status', 'content': 'Verificando alucinaciones...'})}\n\n"
 
         except asyncio.CancelledError:
             import logging
@@ -291,31 +445,31 @@ async def ask_agent_stream(
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
             
-    def save_chat_history():
-        try:
-            # Crear la cabecera del chat si no existe
-            title = request.message[:50] + "..." if len(request.message) > 50 else request.message
-            user_id = request.user_info.get("user_id", "anonymous") if request.user_info else "anonymous"
-            thread_uuid = uuid.UUID(thread_id)
-            
-            chat_provider.create_chat(user_id=user_id, title=title, thread_id=thread_uuid)
-            
-            # Guardar mensaje del usuario
-            chat_provider.add_message(thread_id=thread_uuid, role="user", content=request.message)
-            
-            # Guardar respuesta generada completa
-            generated_text = "".join(full_response_text)
-            if generated_text:
-                chat_provider.add_message(thread_id=thread_uuid, role="assistant", content=generated_text)
-        except Exception as e:
-            print(f"[CHAT_PERSISTENCE_ERROR] {e}")
+        finally:
+            # Sincronizamos el final del stream
+            try:
+                # Crear la cabecera del chat si no existe
+                title = request.message[:50] + "..." if len(request.message) > 50 else request.message
+                user_id = request.user_info.get("user_id", "anonymous") if request.user_info else "anonymous"
+                thread_uuid = uuid.UUID(thread_id)
+                
+                chat_provider.create_chat(user_id=user_id, title=title, thread_id=thread_uuid)
+                
+                # Guardar mensaje del usuario
+                chat_provider.add_message(thread_id=thread_uuid, role="user", content=request.message)
+                
+                # Guardar respuesta generada completa
+                generated_text = "".join(full_response_text)
+                if generated_text:
+                    chat_provider.add_message(thread_id=thread_uuid, role="assistant", content=generated_text)
+            except Exception as e:
+                print(f"[CHAT_PERSISTENCE_ERROR] {e}")
 
-    task = BackgroundTask(save_chat_history)
     # El media_type es crucial para que el frontend (ej. Vercel AI SDK) lo lea como un stream continuo
     return StreamingResponse(
         event_generator(), 
         media_type="text/event-stream", 
-        background=task,
+
         headers={"X-Thread-ID": thread_id}
     )
 
@@ -370,3 +524,44 @@ def check_dlq_health():
             }
     except Exception as e:
         return {"error": str(e), "status_code": 500}
+
+@router.get("/feedback")
+async def get_feedback(
+    limit: int = 100,
+    chat_provider = Depends(get_chat_provider)
+):
+    """
+    Lista los últimos feedbacks recibidos (Thumbs up/down).
+    """
+    try:
+        feedbacks = chat_provider.get_all_feedback(limit=limit)
+        return {"feedbacks": feedbacks}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving feedback: {str(e)}")
+
+@router.post("/feedback")
+async def receive_feedback(
+    request: FeedbackRequest,
+    chat_provider = Depends(get_chat_provider)
+):
+    """
+    Endpoint para recibir retroalimentación del usuario (Thumbs Up/Down).
+    Guarda en la base de datos la interacción y posible corrección.
+    """
+    try:
+        if not hasattr(chat_provider, "add_chat_feedback"):
+            raise HTTPException(status_code=500, detail="chat_provider missing add_chat_feedback")
+            
+        feedback_id = chat_provider.add_chat_feedback(
+            thread_id=request.thread_id,
+            score=request.score,
+            message_id=request.message_id,
+            user_prompt=request.user_prompt,
+            ai_response=request.ai_response,
+            tools_used=request.tools_used,
+            user_correction=request.user_correction
+        )
+        return {"status": "success", "feedback_id": str(feedback_id)}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Feedback error: {str(e)}")

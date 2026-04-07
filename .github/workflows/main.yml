@@ -22,6 +22,15 @@ jobs:
       with:
         python-version: '3.12'
 
+    - name: Obtener secretos de Infisical
+      uses: Infisical/secrets-action@v1.0.8
+      with:
+          client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          env-slug: "prod"
+          project-slug: "bmo-ai-assistant-qd7o"
+          secret-path: "/"
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
@@ -30,17 +39,13 @@ jobs:
     - name: Smoke Tests (Ensure API starts with Cloud Storage settings)
       env:
         USE_CLOUD_STORAGE: "True"
-        GOOGLE_API_KEY: "fake_google_key"
-        OPENAI_API_KEY: "fake_openai_key"
-        OPENWEATHERMAP_API_KEY: "fake_weather_key"
-        # Secretos de DB simulados para que inicie la API y chequeemos sintaxis
-        AURA_URI: "neo4j+s://fake.databases.neo4j.io"
-        AURA_USER: "neo4j"
-        AURA_PASSWORD: "fake"
+        INTEGRATION_ENV: "cloud"
+        APP_ENV: "production"
       run: |
         # Probamos únicamente que todos los tests unitarios (mockeados al 100%) corran bajo configuración CLOUD
         # No corremos los integration tests acá porque usarían los testcontainers locales y no las BD Cloud reales.
         pytest src/tests/unit/
+        pytest src/tests/integration/test_all_endpoints_cloud.py -v --tb=short
         
     - name: Build Docker Image
       run: |

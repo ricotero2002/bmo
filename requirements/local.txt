@@ -21,3 +21,7 @@ testcontainers[chroma,postgres]==4.14.1
 
 # --- LLM Evaluation ---
 deepeval
+locust
+sseclient-py
+langsmith
+pandas

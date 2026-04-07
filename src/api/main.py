@@ -1,4 +1,12 @@
 from contextlib import asynccontextmanager
+import os
+import sys
+import asyncio
+
+# Configuración necesaria para psycopg3 en Windows antes de cualquier operación asíncrona
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from src.providers.vector_store.factory import VectorStoreFactory

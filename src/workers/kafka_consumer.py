@@ -5,9 +5,9 @@ import logging
 import asyncio
 from datetime import datetime, timezone
 from confluent_kafka import Consumer, KafkaError, KafkaException, Producer
-import certifi
 from src.core.config import settings
 from src.service.orchestrator import IngestionOrchestrator
+from src.providers.messaging.kafka_config import build_kafka_conf
 import os
 # Configuración de logging
 logging.basicConfig(level=logging.INFO)
@@ -39,46 +39,18 @@ tracer = trace.get_tracer(__name__)
 MAIN_TOPIC = settings.KAFKA_RAW_DOCUMENTS_TOPIC
 DLT_TOPIC  = settings.KAFKA_DLT_TOPIC  # Dead Letter Topic
 MAX_CONSUMER_RETRIES = 3
-GROUP_ID = os.getenv("KAFKA_GROUP_ID", "document-ingestor-v3")
+GROUP_ID = os.getenv("KAFKA_GROUP_ID", "document-ingestor-v4")
 
 orchestrator = IngestionOrchestrator()
 
 
-def _build_kafka_conf(extra: dict = None) -> dict:
-    """Construye la configuración de Kafka soportando local y Aiven (TLS/SASL)."""
-    base = {
-        "bootstrap.servers": settings.KAFKA_BOOTSTRAP_SERVERS,
-        "message.max.bytes": 104857600,
-    }
-    if settings.APP_ENV == "production":
-        # Aiven Kafka: SASL_SSL + SCRAM-SHA-256
-        # Variables: KAFKA_SASL_USERNAME, KAFKA_SASL_PASSWORD
-        # Opcional: KAFKA_SSL_CA_LOCATION (ruta al ca.pem de Aiven)
-        base.update({
-            "security.protocol": "SASL_SSL",
-            "sasl.mechanisms": "SCRAM-SHA-256",
-            "sasl.username": os.getenv("KAFKA_SASL_USERNAME"),
-            "sasl.password": os.getenv("KAFKA_SASL_PASSWORD"),
-        })
-        ca_location = os.getenv("KAFKA_SSL_CA_LOCATION")
-        if ca_location:
-            ca_location = os.path.abspath(ca_location)
-            if os.path.exists(ca_location):
-                base["ssl.ca.location"] = ca_location
-            else:
-                base["ssl.ca.location"] = certifi.where()
-        else:
-            base["ssl.ca.location"] = certifi.where()
-    if extra:
-        base.update(extra)
-    return base
 
 
 async def run_consumer():
     # Inicialización diferida para asegurar settings cargados y OTel listo
     logger.info(f"Conectando a Kafka: {settings.KAFKA_BOOTSTRAP_SERVERS} (env={settings.APP_ENV})")
 
-    conf = _build_kafka_conf({
+    conf = build_kafka_conf({
         "group.id": GROUP_ID,
         "enable.auto.commit": False,
         "auto.offset.reset": "earliest",
@@ -90,7 +62,7 @@ async def run_consumer():
     })
 
     consumer = Consumer(conf)
-    producer = Producer(_build_kafka_conf())
+    producer = Producer(build_kafka_conf())
 
     consumer.subscribe([MAIN_TOPIC])
     logger.info(f"Consumidor Kafka iniciado. Escuchando tópico: {MAIN_TOPIC}")

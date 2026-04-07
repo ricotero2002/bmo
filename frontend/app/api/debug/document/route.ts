@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     }
 
     try {
-        const response = await fetch(`${baseUrl}/api/debug/documents?user_id=${userId || ''}`, {
+        const response = await fetch(`${baseUrl}/api/debug/document?user_id=${userId || ''}`, {
             method: 'GET',
         });
 

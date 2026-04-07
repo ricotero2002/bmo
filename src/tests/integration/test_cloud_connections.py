@@ -339,7 +339,7 @@ def test_kafka_connection():
     consumer = Consumer(conf)
     try:
         # list_topics() verifica que se puede conectar y obtener metadatos del broker
-        metadata = consumer.list_topics(timeout=10)
+        metadata = consumer.list_topics(timeout=20)
         topic_names = list(metadata.topics.keys())
         assert len(topic_names) > 0, "Kafka no devolvio ningun topic"
         print(f"✅ Kafka (Aiven) conectado — topics: {topic_names}")

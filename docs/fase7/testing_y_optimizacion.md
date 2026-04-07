@@ -31,6 +31,8 @@ A continuación se detalla todo el espectro de pruebas, mediciones y optimizacio
 * **Simulación de Tráfico:** Utilizar herramientas simples para simular 10, 50 o 100 consultas simultáneas al agente.
 * **Comportamiento del Autoescalado (KEDA + HPA):** Validar observando OpenTelemetry/Grafana si los pods de la API y los workers se replican correctamente en cuanto la CPU promedio supera el 70% o la pila de Kafka/Celery acumula retraso (Lag).
 
+
+
 ## 6. Mejoras Futuras y Ajuste Fino
 * **Búsqueda en Internet (Web Search):** Evaluar darle al agente una herramienta extra (Tavily/DuckDuckGo) para que busque en la web abierta cuando no encuentre respuestas en tus notas locales.
 * **Optimización de Prompts:** Reducir la longitud del *System Prompt* base sin perder la caracterización del asistente, ahorrando así tokens en el historial.
@@ -52,3 +54,46 @@ Permitir preguntas complejas como busca estas notas, despues segun los freworks 
 Permitir que el agente luego escriba o guarde documentos sobre cosas hablandas para poder recuperarlas luego.
 
 Hacer si o si el pipeline de obtener documentos de una carpeta o de un drive.
+
+Aquí te dejo opciones viables y estructuradas para implementar esto en tu código, junto con los datos de prueba que pediste.
+
+1. Estrategias para Mejorar el Chunking y el Contexto
+Dado que ya tienes un enrutador (ChunkingRouter) y un AgenticChunker, podemos atacar el problema en dos frentes: Metadatos Duros (para filtros exactos) y Enriquecimiento Semántico (para mejor similitud vectorial).
+
+Opción A: Resumen Global Pre-Chunking (Recomendado)
+Antes de pasar el texto por el MarkdownTextSplitter o el AgenticChunker, toma los primeros N caracteres del documento (o el documento entero si es corto) y pásalos por un LLM muy rápido (como un modelo Flash o Haiku) con un prompt sencillo:
+
+Objetivo: Extraer el tema general y el tipo de documento.
+
+Output esperado (JSON): {"doc_type": "meeting_notes" | "class_notes" | "todo_list" | "general", "global_summary": "Breve resumen de 2 líneas"}.
+
+Implementación: Inyectas este doc_type como metadato duro en Pinecone (ideal para cuando el agente decide usar el filtro source_filter). Además, pre-pendes el global_summary al page_content de cada chunk. Así, un chunk que solo dice "Revisar el bug de login" se convierte vectorialmente en: Contexto: Notas de reunión de sincronización de equipo. Texto: Revisar el bug de login.
+
+Opción B: Evolucionar el AgenticChunker
+Aprovechando que tu AgenticChunker ya usa un LLM para generar un title y un summary de cada proposición agrupada, puedes agregar un campo al esquema Pydantic para que clasifique la intención de ese chunk específico:
+
+chunk_intent: "action_item", "concept_explanation", "reference_data".
+
+Esto es útil porque una nota de clase puede contener tanto explicaciones (conceptos) como tareas ("leer capítulo 4").
+
+2. ¿Cómo manejar fechas históricas/personalizadas?
+Actualmente, tu sistema pisa cualquier fecha con el momento exacto de la subida.
+En ingestion.py, tienes esto:
+"created_at": datetime.now(timezone.utc).timestamp()
+
+Y en orchestrator.py:
+"uploaded_at": datetime.now(timezone.utc).isoformat()
+
+La solución:
+
+Modificar la API/Frontend: Permite que al subir el archivo se envíe un campo opcional document_date o reference_date.
+
+En el Orchestrator: Recibe ese dato en el diccionario metadata. Tu código actual ya hace job_metadata.update(metadata), lo cual está perfecto. Solo asegúrate de pasar ese metadata (o específicamente la fecha) como argumento extra (kwargs) a la tarea de Celery (process_document_task.apply_async).
+
+En Ingestion: Modifica create_document para que acepte un parámetro custom_date.
+
+Python
+def create_document(self, text: str, filename: str, custom_date: float = None, ...):
+    timestamp = custom_date if custom_date else datetime.now(timezone.utc).timestamp()
+    metadata = {"source": filename, "created_at": timestamp}
+De esta forma, si subes notas del año pasado, el retriever podrá usar el filtro date_from correctamente.
