@@ -195,6 +195,34 @@ async def get_document_chunks(
     except Exception as e:
         return {"error": str(e), "status_code": 500}
 
+@router.get("/debug/document")
+async def list_documents(
+    user_id: str,
+    status_provider = Depends(get_status_provider)
+):
+    """Lista todos los documentos ingeridos para un usuario específico (para depuración)."""
+    try:
+        # Usamos el engine de status_provider para hacer una consulta directa
+        from sqlalchemy import text
+        query = text("SELECT doc_id, source_path, status, created_at, file_hash FROM ingestion_jobs WHERE user_id = :user_id ORDER BY created_at DESC")
+        
+        with status_provider.engine.connect() as conn:
+            result = conn.execute(query, {"user_id": user_id})
+            # Convertimos a lista de diccionarios
+            documents = []
+            for row in result:
+                # row es un objeto que soporta mapeo si es SQLAlchemy 2.0+ o tiene _mapping
+                r = row._mapping if hasattr(row, "_mapping") else dict(row)
+                documents.append(dict(r))
+                
+        return {
+            "user_id": user_id,
+            "documents": documents,
+            "total": len(documents)
+        }
+    except Exception as e:
+        return {"error": str(e), "status_code": 500}
+
 @router.post("/delete_file")
 async def delete_document(
     request: DeleteRequest,

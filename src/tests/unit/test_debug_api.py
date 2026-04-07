@@ -41,7 +41,7 @@ def test_get_documents_endpoint(mock_status_provider):
     mock_result._mapping = mock_job
     mock_status_provider.engine.connect.return_value.__enter__.return_value.execute.return_value = [mock_result]
     
-    response = client.get(f"/api/debug/documents?user_id={user_id}")
+    response = client.get(f"/api/debug/document?user_id={user_id}")
     
     assert response.status_code == 200
     data = response.json()
@@ -70,7 +70,7 @@ def test_get_document_chunks_endpoint(mock_db, mock_record_manager):
     if hasattr(mock_db, "_index"):
         del mock_db._index
 
-    response = client.get(f"/api/debug/documents/{doc_id}/chunks")
+    response = client.get(f"/api/debug/document/{doc_id}/chunks")
     
     assert response.status_code == 200
     data = response.json()
@@ -79,7 +79,7 @@ def test_get_document_chunks_endpoint(mock_db, mock_record_manager):
     assert data["total_chunks"] == 2
     assert len(data["chunks"]) == 2
     assert data["chunks"][0]["id"] == "chunk_1"
-    assert data["chunks"][0]["content"] == "Content 1"
+    assert data["chunks"][0]["page_content"] == "Content 1"
     
     # Limpiamos
     app.dependency_overrides.clear()

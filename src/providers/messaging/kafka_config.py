@@ -32,7 +32,6 @@ def build_kafka_conf(extra: dict = None) -> dict:
             "sasl.mechanisms": "SCRAM-SHA-256",
             "sasl.username": os.getenv("KAFKA_SASL_USERNAME"),
             "sasl.password": os.getenv("KAFKA_SASL_PASSWORD"),
-            "ssl.providers": "default,legacy",
         })
 
         ca_location = os.getenv("KAFKA_SSL_CA_LOCATION")
