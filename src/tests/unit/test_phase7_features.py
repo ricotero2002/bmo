@@ -20,7 +20,7 @@ def test_chunking_service_injects_global_context_and_date():
     mock_fast_agent.invoke.return_value = mock_context
     
     # Configurar el factory para devolver el mock agent cuando se pida DocumentMetadataExtraction
-    mock_llm_factory.create.return_value = mock_fast_agent
+    mock_llm_factory.create_lite.return_value = mock_fast_agent
     
     service = ChunkingService()
     
@@ -60,7 +60,7 @@ def test_chunking_service_respects_manual_date():
         requires_agentic_chunking=False
     )
     mock_fast_agent.invoke.return_value = mock_context
-    mock_llm_factory.create.return_value = mock_fast_agent
+    mock_llm_factory.create_lite.return_value = mock_fast_agent
     
     service = ChunkingService()
     
@@ -101,8 +101,8 @@ def test_agentic_chunker_removes_unnecessary_metadata():
     ]
 
     # Mocking de agentes específicos dentro de AgenticChunker
-    # .create() se llama 3 veces en __init__
-    mock_llm_factory.create.side_effect = [
+    # .create_lite() se llama 3 veces en __init__
+    mock_llm_factory.create_lite.side_effect = [
         mock_plain_agent,
         mock_sentences_agent,
         mock_chunk_id_agent
@@ -111,17 +111,8 @@ def test_agentic_chunker_removes_unnecessary_metadata():
     from src.service.chunking import AgenticChunker
     agentic = AgenticChunker(mock_llm_factory)
 
-    # Inyectamos datos manuales para simular que terminó el proceso
-    agentic.chunks = {
-        "c1": {
-            "propositions": ["Prop 1"],
-            "title": "Titulo Inutil",
-            "summary": "Resumen Inutil",
-            "chunk_index": 0
-        }
-    }
-
-    docs = agentic.chunk("Texto no importa porque mockeamos chunks")
+    # El texto de entrada debe disparar el proceso (que mockeamos arriba)
+    docs = agentic.chunk("Texto de prueba.")
 
     assert len(docs) == 1
     meta = docs[0].metadata

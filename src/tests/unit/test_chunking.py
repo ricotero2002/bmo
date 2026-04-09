@@ -35,7 +35,10 @@ class DummyAgent:
 
 
 class DummyLLMFactory:
-    def create(self, response_format=None):
+    def create(self, tools=None, response_format=None):
+        return DummyAgent(response_format=response_format)
+
+    def create_lite(self, tools=None, response_format=None):
         return DummyAgent(response_format=response_format)
 
 @pytest.fixture
