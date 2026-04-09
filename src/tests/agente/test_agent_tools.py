@@ -4,7 +4,10 @@ from langchain_core.runnables import RunnableConfig
 from src.core.llm import LLMFactory
 from src.service.agent import AgentService
 from langgraph.checkpoint.memory import MemorySaver
+import os
+from dotenv import load_dotenv
 
+load_dotenv(override=True)
 @pytest.mark.asyncio
 async def test_agent_tool_calling_spy():
     """
@@ -46,7 +49,7 @@ async def test_agent_tool_calling_spy():
         message="¿Cuántos días de vacaciones tengo en la empresa?",
         thread_id="test_tool_calling",
         user_info={"user_id": "user_123"},
-        prompt_version="rag_v2"
+        prompt_version=os.getenv("PROMPT_VERSION")
     )
 
     # 3. Validar que el LLM efectivamente invocó la herramienta

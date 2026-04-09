@@ -4,7 +4,10 @@ from deepeval import assert_test
 from deepeval.test_case import LLMTestCase
 from deepeval.metrics import FaithfulnessMetric, AnswerRelevancyMetric
 from langchain_core.tools import tool
+import os
+from dotenv import load_dotenv
 
+load_dotenv(override=True)
 # Ajusta las importaciones de tu proyecto según corresponda
 from src.core.llm import LLMFactory
 from src.service.agent import AgentService
@@ -72,7 +75,7 @@ async def test_agent_rag_quality(test_data):
         message=test_data["input"],
         thread_id="test_thread_v1",
         user_info={"name": "Test User"},
-        prompt_version="rag_v1"
+        prompt_version=os.getenv("PROMPT_VERSION")
     )
     
     # Dependiendo de cómo devuelve tu agent_service, extraemos el contenido.
@@ -105,7 +108,7 @@ async def test_agent_rag_quality(test_data):
         message=test_data["input"],
         thread_id="test_thread_v2",
         user_info={"name": "Test User"},
-        prompt_version="rag_v2" # La nueva versión o actual a testear
+        prompt_version=os.getenv("PROMPT_VERSION")# La nueva versión o actual a testear
     )
     
     generated_msg_v2 = result_v2.get("generated")

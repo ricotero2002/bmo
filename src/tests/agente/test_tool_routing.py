@@ -147,7 +147,7 @@ async def test_agent_tool_selection(agent_service, query, expected_tool):
         message=query,
         thread_id=f"test_routing_{expected_tool}",
         user_info={"user_id": "test_routing_user", "name": "Test User"},
-        prompt_version="rag_v3",
+        prompt_version=os.getenv("PROMPT_VERSION"),
     )
 
     called_tools = _extract_called_tools(result)
@@ -183,7 +183,7 @@ async def test_multi_tool_complex_query(agent_service_with_seed):
         message=query,
         thread_id="test_multi_tool_complex",
         user_info={"user_id": "test_routing_user", "name": "Test User"},
-        prompt_version="rag_v3",
+        prompt_version=os.getenv("PROMPT_VERSION"),
     )
 
     called_tools = _extract_called_tools(result)
@@ -199,7 +199,15 @@ async def test_multi_tool_complex_query(agent_service_with_seed):
     )
 
     # Validación de contenido: la respuesta debería mencionar al menos uno de los frameworks
-    final_response = result.get("messages", [])[-1].content if result.get("messages") else ""
+    messages = result.get("messages", [])
+    last_msg_content = messages[-1].content if messages else ""
+    
+    # Manejar si el contenido es una lista (formato multimodal o bloques de Gemini)
+    if isinstance(last_msg_content, list):
+        final_response = "".join(str(c.get("text", c)) if isinstance(c, dict) else str(c) for c in last_msg_content)
+    else:
+        final_response = str(last_msg_content)
+
     frameworks_mentioned = any(
         fw.lower() in final_response.lower()
         for fw in ["LangChain", "LlamaIndex", "FastAPI", "Pinecone"]
@@ -232,7 +240,7 @@ async def test_multiturn_save_previous_answer(agent_service_with_memory):
         message="¿Qué discutimos cuando tuvimos la ultima reunion?",
         thread_id=thread_id,
         user_info=user_info,
-        prompt_version="rag_v3",
+        prompt_version=os.getenv("PROMPT_VERSION"),
     )
     turn1_tools = _extract_called_tools(turn1_result)
     turn1_plan = _extract_planned_tools(turn1_result)
@@ -249,7 +257,7 @@ async def test_multiturn_save_previous_answer(agent_service_with_memory):
         message="Guardá eso en un documento en mis notas",
         thread_id=thread_id,
         user_info=user_info,
-        prompt_version="rag_v3",
+        prompt_version=os.getenv("PROMPT_VERSION"),
     )
     turn2_tools = _extract_called_tools(turn2_result)
     turn2_plan = _extract_planned_tools(turn2_result)
@@ -284,7 +292,7 @@ async def test_multiturn_web_search_then_save(agent_service_with_memory):
         message="Buscá en internet cuáles son los mejores frameworks de Python en 2026",
         thread_id=thread_id,
         user_info=user_info,
-        prompt_version="rag_v3",
+        prompt_version=os.getenv("PROMPT_VERSION"),
     )
     turn1_tools = _extract_called_tools(turn1_result)
     turn1_plan = _extract_planned_tools(turn1_result)
@@ -300,7 +308,7 @@ async def test_multiturn_web_search_then_save(agent_service_with_memory):
         message="Guardá lo que encontraste en mis notas personales",
         thread_id=thread_id,
         user_info=user_info,
-        prompt_version="rag_v3",
+        prompt_version=os.getenv("PROMPT_VERSION"),
     )
     turn2_tools = _extract_called_tools(turn2_result)
     turn2_plan = _extract_planned_tools(turn2_result)

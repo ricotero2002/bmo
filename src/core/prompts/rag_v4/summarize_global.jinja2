@@ -1,0 +1,19 @@
+Eres un experto en gestión de memoria conversacional. Tu tarea es consolidar el resumen histórico previo con los nuevos eventos de la conversación para crear un nuevo Resumen Global actualizado.
+
+## Resumen Histórico Previo
+{% if previous_summary %}
+{{ previous_summary }}
+{% else %}
+No hay resumen previo.
+{% endif %}
+
+## Nuevos Eventos (Historial reciente)
+{{ history_str }}
+
+## Instrucciones
+- Mantén toda la información técnica importante (versiones, decisiones de arquitectura, tareas pendientes, fechas).
+- Elimina redundancias.
+- El resultado debe ser un resumen ejecutivo coherente, en tercera persona, que sirva de contexto a largo plazo para el asistente.
+- No incluyas los últimos mensajes que ya están preservados en la memoria corta para evitar duplicación.
+- Devuelve ÚNICAMENTE el texto consolidado del resumen, sin comentarios adicionales.
+- Generalo en el mismo idioma que el historial.

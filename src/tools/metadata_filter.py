@@ -57,14 +57,15 @@ Consulta del usuario: "{query}"
 Documentos candidatos:
 {docs_text}
 
-Instrucciones de puntuación estricta:
-1. EVALÚA cada documento: ¿Contiene datos, fechas o hechos que respondan a la consulta?
-2. PRIORIZA la evidencia directa sobre menciones tangenciales.
-3. SELECCIONA hasta {self.k} índices, ordenados de MAYOR a menor relevancia.
-4. Devuelve ÚNICAMENTE un array JSON de enteros. Ejemplo: [2, 0]
-5. Si ningún documento tiene relación real, devuelve [].
+Instrucciones de puntuación extrema:
+1. EVALÚA cada documento: ¿Contiene información RELEVANTE y ESPECÍFICA que responda a la consulta?
+2. DESCARTA DISTRACTORES: Si un documento es sobre un tema diferente (ej. habla de Kafka cuando preguntan de LangGraph), NO lo incluyas en la lista final.
+3. PRIORIZA la evidencia directa sobre menciones tangenciales.
+4. CALIDAD > CANTIDAD: Si solo hay 1 documento útil, devuelve [indice]. Si ninguno sirve, devuelve [].
+5. SELECCIONA hasta {self.k} índices, ordenados de MAYOR a menor relevancia.
+6. Devuelve ÚNICAMENTE un array JSON de enteros. Ejemplo: [2, 0]
 
-REGLA DE ORO: No devuelvas explicaciones, solo el array JSON."""
+REGLA DE ORO: No devuelvas explicaciones, solo el array JSON. Si no estás seguro de un documento, es mejor omitirlo para mantener la precisión."""
         
         try:
             response = llm.invoke(prompt)
@@ -177,6 +178,33 @@ def _get_adjacent_chunks(source: str, center_index: int, user_id: str) -> str:
         return ""
 
 
+def _get_document_context(source: str, user_id: str, query: str, k: int = 4) -> str:
+    """Busca los chunks más relevantes de un mismo documento cuando falla la expansión adyacente en agentic chunks."""
+    if not source or not query:
+        return ""
+    
+    doc_filter = {
+        "$and": [
+            {"user_id": {"$eq": user_id}},
+            {"source": {"$eq": source}}
+        ]
+    }
+    try:
+        # Buscamos específicamente dentro de este documento los K resultados más cercanos a la query
+        docs = _vector_store.similarity_search(query, k=k, filter=doc_filter)
+        if not docs:
+            return ""
+        
+        # Ordenamos por índice de chunk para mantener coherencia si existen
+        docs.sort(key=lambda d: d.metadata.get("chunk_index", 0))
+        
+        # Marcamos visualmente que es un contexto expandido del documento
+        return "\n\n".join([d.page_content for d in docs])
+    except Exception as e:
+        logger.warning(f"Error recuperando contexto del documento {source}: {e}")
+        return ""
+
+
 @tool(args_schema=RetrieverInput)
 def knowledge_base_retriever(
     query: str,
@@ -242,9 +270,10 @@ def knowledge_base_retriever(
         if not docs:
             return "No encontré información relevante en la base de conocimientos."
 
-        # 4. Expansión de Contexto (Adyacentes)
+        # 4. Expansión de Contexto (Adyacentes y Documental)
         final_results = []
-        processed_blobs = set() # Para evitar duplicados en expansión
+        processed_blobs = set()   # Para evitar duplicados de chunks exactos
+        processed_sources = set() # Para evitar duplicar expansiones del mismo documento
 
         for doc in docs:
             # Recuperación de metadatos
@@ -255,22 +284,33 @@ def knowledge_base_retriever(
             chunk_type = doc.metadata.get('chunk_type', 'markdown')
             doc_type_str = doc.metadata.get('doc_type', 'general')
 
-            # ID único para este bloque de contexto
+            # ID único para este bloque de contexto (evita procesar el mismo nodo dos veces)
             blob_id = f"{source}_{idx}"
             if blob_id in processed_blobs:
                 continue
                 
-            # Solo expandimos si no es agentic (regla de precisión)
-            if chunk_type != "agentic" and idx is not None:
-                expanded_text = _get_adjacent_chunks(source, idx, user_id)
+            # --- LÓGICA DE EXPANSIÓN ---
+            if chunk_type == "agentic":
+                # FALLBACK DOCUMENTAL: Si el chunk es agentic (proposición), 
+                # buscamos más contexto en el mismo archivo para no perder info relevante.
+                if source not in processed_sources:
+                    content = _get_document_context(source, user_id or user_id_meta, query, k=4)
+                    processed_sources.add(source)
+                else:
+                    # Si ya procesamos este documento en este turno, saltamos para no duplicar info
+                    continue
+            elif idx is not None:
+                # EXPANSIÓN ADYACENTE: Para markdown, seguimos usando la ventana deslizante (+-1)
+                expanded_text = _get_adjacent_chunks(source, idx, user_id or user_id_meta)
                 content = expanded_text if expanded_text else doc.page_content
             else:
                 content = doc.page_content
 
+            if not content.strip():
+                continue
+
             # Generar Presigned URL (Jerarquía: user_id/source)
             try:
-                # Si el source ya trae el slash (path completo), lo usamos. 
-                # Si no, y tenemos user_id (del context o meta), lo prefijamos.
                 storage_path = source
                 current_user = user_id or user_id_meta
                 if current_user and "/" not in source:

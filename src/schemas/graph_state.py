@@ -15,6 +15,10 @@ class GraphState(TypedDict):
     """
     # 'messages' usa el reductor add_messages para acumular el historial
     messages: Annotated[Sequence[BaseMessage], add_messages]
+    # Resúmenes de cada interacción individual (no se guardan en el historial de mensajes)
+    run_summaries: Annotated[List[str], lambda x, y: [] if y is None else x + y]
+    # Resumen global de la conversación para contexto a largo plazo
+    summary: Optional[str]
     # Datos inyectados desde el endpoint (no se acumulan, se sobreescriben)
     user_info: dict 
     # Versión del prompt a utilizar

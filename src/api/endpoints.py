@@ -17,7 +17,7 @@ router = APIRouter()
 # --- EL PATOVICA ASÍNCRONO ---
 # Permitimos un máximo de 10 ejecuciones pesadas (LLM) en paralelo por cada Worker.
 # Esto evita picos de RAM (>2GB) pero permite que las peticiones esperen en fila en vez de dar 503.
-llm_semaphore = asyncio.Semaphore(20)
+llm_semaphore = asyncio.Semaphore(25)
 
 @router.get("/health")
 async def health_check():

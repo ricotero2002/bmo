@@ -14,7 +14,7 @@ class AskRequest(BaseModel):
     message: str
     thread_id: Optional[str] = None
     user_info: Optional[dict] = {"user_id": "User"}
-    prompt_version: Optional[str] = "rag_v1"
+    prompt_version: Optional[str] = "rag_v4"
 
 class DeleteRequest(BaseModel):
     doc_id: str
