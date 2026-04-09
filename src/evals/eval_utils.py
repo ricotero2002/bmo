@@ -9,6 +9,9 @@ from src.providers.database.status_provider import StatusProvider
 from dotenv import load_dotenv
 import os
 
+# --- NUEVO: Importar Tenacity ---
+from tenacity import retry, stop_after_attempt, wait_exponential
+
 logger = logging.getLogger(__name__)
 load_dotenv(override=True)
 
@@ -36,10 +39,13 @@ class GeminiJudge(DeepEvalBaseLLM):
     def load_model(self):
         return self.model
 
+    # --- NUEVO: Decorador de reintento para sobrevivir a 503s de Google ---
+    @retry(stop=stop_after_attempt(4), wait=wait_exponential(multiplier=2, min=2, max=15))
     def generate(self, prompt: str) -> str:
         res = self.model.invoke(prompt)
         return self._clean_json(res.content)
 
+    @retry(stop=stop_after_attempt(4), wait=wait_exponential(multiplier=2, min=2, max=15))
     async def a_generate(self, prompt: str) -> str:
         res = await self.model.ainvoke(prompt)
         return self._clean_json(res.content)
@@ -70,6 +76,12 @@ class EvalCleanup:
             except Exception as e:
                 logger.error(f"[EVAL CLEANUP] Failed to wipe doc_id {doc_id}: {e}")
 
+# --- NUEVO: Reintentar el flujo RAG completo si hay error de servidor ---
+@retry(
+    stop=stop_after_attempt(3), 
+    wait=wait_exponential(multiplier=3, min=4, max=20),
+    reraise=True
+)
 async def ask_my_rag(agent_service, query: str, user_id: str = "cosmefulanitotest") -> tuple[str, list[str]]:
     """
     Bridge function to call the actual RAG agent and extract answer + context.

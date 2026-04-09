@@ -14,6 +14,7 @@ from langchain_classic.retrievers.contextual_compression import ContextualCompre
 from src.providers.storage.factory import StorageFactory
 from src.schemas.metadata import DocType, DOC_TYPES_INLINE
 from src.core.llm import LLMFactory
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ class GeminiReranker(BaseDocumentCompressor):
     """
     k: int = 5
     
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=2, min=2, max=10))
     def compress_documents(
         self,
         documents: Sequence[Document],
