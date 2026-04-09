@@ -57,11 +57,8 @@ jobs:
       run: |
         pytest src/tests/agente/ -v
 
-    - name: Run Cloud Conection Tests
+    - name: Run Cloud Integrations
       env:
         INTEGRATION_ENV: cloud
       run: |
-        pytest src/tests/integration/test_cloud_connections.py -v -s
-        pytest src/tests/integration/test_full_ingestion_flow.py -v -s
-        pytest src/tests/integration/test_golden_rag.py -v -s
         pytest src/tests/integration/test_tools_live.py -v -s

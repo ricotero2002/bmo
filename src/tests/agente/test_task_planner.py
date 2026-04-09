@@ -61,7 +61,7 @@ def _make_state(user_message: str, history: list = None, summary: str = None) ->
     return {
         "messages": messages,
         "user_info": {"user_id": "test_user", "name": "Test"},
-        "prompt_version": "rag_v3",
+        "prompt_version": os.getenv("PROMPT_VERSION"),
         "retrieve_retry_count": 0,
         "generate_retry_count": 0,
         "docs_parse_retries": 0,

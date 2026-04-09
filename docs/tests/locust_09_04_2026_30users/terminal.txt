@@ -1,0 +1,442 @@
+Windows PowerShell
+Copyright (C) Microsoft Corporation. All rights reserved.
+
+Install the latest PowerShell for new features and improvements! https://aka.ms/PSWindows
+
+PS C:\Users\Agustin> kubectl get pods -n personal-ai -w
+NAME                               READY   STATUS    RESTARTS        AGE
+api-deployment-7bff7d8b46-8d9nr    1/1     Running   1 (3m43s ago)   87m
+api-deployment-7bff7d8b46-wxk6j    1/1     Running   1 (3m43s ago)   87m
+celery-exporter-775f847b8c-h98pm   1/1     Running   1 (3m43s ago)   90m
+worker-deployment-64c5dc6788-sglxs   0/1     Pending   0               0s
+worker-deployment-64c5dc6788-sglxs   0/1     Pending   0               0s
+worker-deployment-64c5dc6788-sglxs   0/1     ContainerCreating   0               0s
+worker-deployment-64c5dc6788-sglxs   1/1     Running             0               2s
+kafka-consumer-deployment-69dd5c9dc7-hz7v2   0/1     Pending             0               0s
+kafka-consumer-deployment-69dd5c9dc7-hz7v2   0/1     Pending             0               0s
+kafka-consumer-deployment-69dd5c9dc7-hz7v2   0/1     ContainerCreating   0               0s
+kafka-consumer-deployment-69dd5c9dc7-hz7v2   1/1     Running             0               1s
+kafka-consumer-deployment-69dd5c9dc7-hz7v2   1/1     Terminating         0               2m15s
+kafka-consumer-deployment-69dd5c9dc7-hz7v2   0/1     Error               0               2m46s
+kafka-consumer-deployment-69dd5c9dc7-hz7v2   0/1     Error               0               2m47s
+kafka-consumer-deployment-69dd5c9dc7-hz7v2   0/1     Error               0               2m47s
+kafka-consumer-deployment-69dd5c9dc7-dr89r   0/1     Pending             0               0s
+kafka-consumer-deployment-69dd5c9dc7-dr89r   0/1     Pending             0               0s
+kafka-consumer-deployment-69dd5c9dc7-dr89r   0/1     ContainerCreating   0               0s
+kafka-consumer-deployment-69dd5c9dc7-dr89r   1/1     Running             0               2s
+kafka-consumer-deployment-69dd5c9dc7-dr89r   1/1     Terminating         0               105s
+kafka-consumer-deployment-69dd5c9dc7-dr89r   0/1     Error               0               2m16s
+kafka-consumer-deployment-69dd5c9dc7-dr89r   0/1     Error               0               2m17s
+kafka-consumer-deployment-69dd5c9dc7-dr89r   0/1     Error               0               2m17s
+kafka-consumer-deployment-69dd5c9dc7-qr46t   0/1     Pending             0               0s
+kafka-consumer-deployment-69dd5c9dc7-qr46t   0/1     Pending             0               0s
+kafka-consumer-deployment-69dd5c9dc7-qr46t   0/1     ContainerCreating   0               0s
+kafka-consumer-deployment-69dd5c9dc7-qr46t   1/1     Running             0               2s
+kafka-consumer-deployment-69dd5c9dc7-qr46t   1/1     Terminating         0               90s
+kafka-consumer-deployment-69dd5c9dc7-qr46t   0/1     Error               0               2m1s
+kafka-consumer-deployment-69dd5c9dc7-qr46t   0/1     Error               0               2m1s
+kafka-consumer-deployment-69dd5c9dc7-qr46t   0/1     Error               0               2m1s
+api-deployment-7bff7d8b46-8d9nr              1/1     Terminating         1 (19m ago)     103m
+api-deployment-7bff7d8b46-8d9nr              0/1     Completed           1               103m
+api-deployment-7bff7d8b46-8d9nr              0/1     Completed           1               103m
+api-deployment-7bff7d8b46-8d9nr              0/1     Completed           1               103m
+PS C:\Users\Agustin> kubectl get pods -n personal-ai -w
+NAME                                 READY   STATUS    RESTARTS      AGE
+api-deployment-7bff7d8b46-wxk6j      1/1     Running   1 (19m ago)   103m
+celery-exporter-775f847b8c-h98pm     1/1     Running   1 (19m ago)   106m
+worker-deployment-64c5dc6788-sglxs   1/1     Running   0             15m
+
+Windows PowerShell
+Copyright (C) Microsoft Corporation. All rights reserved.
+
+Install the latest PowerShell for new features and improvements! https://aka.ms/PSWindows
+
+PS C:\Users\Agustin> kubectl get hpa -n personal-ai -w
+NAME                             REFERENCE                              TARGETS             MINPODS   MAXPODS   REPLICAS   AGE
+api-hpa                          Deployment/api-deployment              cpu: 11%/60%        1         2         2          15d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           <unknown>/5 (avg)   1         1         0          14d
+keda-hpa-kafka-consumer-scaler   Deployment/kafka-consumer-deployment   <unknown>/5 (avg)   1         1         0          11d
+api-hpa                          Deployment/api-deployment              cpu: 5%/60%         1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 6%/60%         1         2         2          15d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           3/5 (avg)           1         1         1          14d
+api-hpa                          Deployment/api-deployment              cpu: 127%/60%       1         2         2          15d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           4/5 (avg)           1         1         1          14d
+api-hpa                          Deployment/api-deployment              cpu: 167%/60%       1         2         2          15d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           2/5 (avg)           1         1         1          14d
+api-hpa                          Deployment/api-deployment              cpu: 106%/60%       1         2         2          15d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           3/5 (avg)           1         1         1          14d
+api-hpa                          Deployment/api-deployment              cpu: 66%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 69%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 127%/60%       1         2         2          15d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           4/5 (avg)           1         1         1          14d
+api-hpa                          Deployment/api-deployment              cpu: 84%/60%        1         2         2          15d
+keda-hpa-kafka-consumer-scaler   Deployment/kafka-consumer-deployment   1/5 (avg)           1         1         1          11d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           5/5 (avg)           1         1         1          14d
+api-hpa                          Deployment/api-deployment              cpu: 60%/60%        1         2         2          15d
+keda-hpa-kafka-consumer-scaler   Deployment/kafka-consumer-deployment   2/5 (avg)           1         1         1          11d
+api-hpa                          Deployment/api-deployment              cpu: 69%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 112%/60%       1         2         2          15d
+keda-hpa-kafka-consumer-scaler   Deployment/kafka-consumer-deployment   0/5 (avg)           1         1         1          11d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           8/5 (avg)           1         1         1          14d
+api-hpa                          Deployment/api-deployment              cpu: 82%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 55%/60%        1         2         2          15d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           10/5 (avg)          1         1         1          14d
+api-hpa                          Deployment/api-deployment              cpu: 94%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 120%/60%       1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 64%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 41%/60%        1         2         2          15d
+keda-hpa-kafka-consumer-scaler   Deployment/kafka-consumer-deployment   <unknown>/5 (avg)   1         1         0          11d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           11/5 (avg)          1         1         1          14d
+api-hpa                          Deployment/api-deployment              cpu: 90%/60%        1         2         2          15d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           14/5 (avg)          1         1         1          14d
+api-hpa                          Deployment/api-deployment              cpu: 72%/60%        1         2         2          15d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           16/5 (avg)          1         1         1          14d
+api-hpa                          Deployment/api-deployment              cpu: 20%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 49%/60%        1         2         2          15d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           17/5 (avg)          1         1         1          14d
+api-hpa                          Deployment/api-deployment              cpu: 72%/60%        1         2         2          15d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           16/5 (avg)          1         1         1          14d
+api-hpa                          Deployment/api-deployment              cpu: 90%/60%        1         2         2          15d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           18/5 (avg)          1         1         1          14d
+api-hpa                          Deployment/api-deployment              cpu: 70%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 37%/60%        1         2         2          15d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           19/5 (avg)          1         1         1          14d
+api-hpa                          Deployment/api-deployment              cpu: 60%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 103%/60%       1         2         2          15d
+keda-hpa-kafka-consumer-scaler   Deployment/kafka-consumer-deployment   2/5 (avg)           1         1         1          11d
+api-hpa                          Deployment/api-deployment              cpu: 39%/60%        1         2         2          15d
+keda-hpa-kafka-consumer-scaler   Deployment/kafka-consumer-deployment   3/5 (avg)           1         1         1          11d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           21/5 (avg)          1         1         1          14d
+api-hpa                          Deployment/api-deployment              cpu: 45%/60%        1         2         2          15d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           22/5 (avg)          1         1         1          14d
+api-hpa                          Deployment/api-deployment              cpu: 85%/60%        1         2         2          15d
+keda-hpa-kafka-consumer-scaler   Deployment/kafka-consumer-deployment   0/5 (avg)           1         1         1          11d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           25/5 (avg)          1         1         1          14d
+api-hpa                          Deployment/api-deployment              cpu: 102%/60%       1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 47%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 57%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 70%/60%        1         2         2          15d
+keda-hpa-kafka-consumer-scaler   Deployment/kafka-consumer-deployment   <unknown>/5 (avg)   1         1         0          11d
+api-hpa                          Deployment/api-deployment              cpu: 77%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 52%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 46%/60%        1         2         2          15d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           27/5 (avg)          1         1         1          14d
+api-hpa                          Deployment/api-deployment              cpu: 38%/60%        1         2         2          15d
+keda-hpa-kafka-consumer-scaler   Deployment/kafka-consumer-deployment   1/5 (avg)           1         1         1          11d
+api-hpa                          Deployment/api-deployment              cpu: 35%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 91%/60%        1         2         2          15d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           28/5 (avg)          1         1         1          14d
+keda-hpa-kafka-consumer-scaler   Deployment/kafka-consumer-deployment   0/5 (avg)           1         1         1          11d
+api-hpa                          Deployment/api-deployment              cpu: 53%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 27%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 15%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 19%/60%        1         2         2          15d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           27/5 (avg)          1         1         1          14d
+keda-hpa-kafka-consumer-scaler   Deployment/kafka-consumer-deployment   <unknown>/5 (avg)   1         1         0          11d
+api-hpa                          Deployment/api-deployment              cpu: 12%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 21%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 16%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 13%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 14%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 12%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 10%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 10%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 11%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 11%/60%        1         2         2          15d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           26/5 (avg)          1         1         1          14d
+keda-hpa-celery-worker-scaler    Deployment/worker-deployment           25/5 (avg)          1         1         1          14d
+api-hpa                          Deployment/api-deployment              cpu: 10%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 9%/60%         1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 9%/60%         1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 11%/60%        1         2         2          15d
+api-hpa                          Deployment/api-deployment              cpu: 10%/60%        1         2         1          15d
+api-hpa                          Deployment/api-deployment              cpu: 10%/60%        1         2         1          15d
+api-hpa                          Deployment/api-deployment              cpu: 10%/60%        1         2         1          15d
+api-hpa                          Deployment/api-deployment              cpu: 13%/60%        1         2         1          15d
+api-hpa                          Deployment/api-deployment              cpu: 10%/60%        1         2         1          15d
+
+Windows PowerShell
+Copyright (C) Microsoft Corporation. All rights reserved.
+
+Install the latest PowerShell for new features and improvements! https://aka.ms/PSWindows
+
+PS C:\Users\Agustin> kubectl logs -n personal-ai -l app=api --follow
+INFO:     Started server process [9]
+INFO:     Waiting for application startup.
+/usr/local/lib/python3.12/site-packages/opentelemetry/instrumentation/dependencies.py:4: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  from pkg_resources import (
+INFO:     Started server process [8]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Application startup complete.
+INFO:     10.42.0.54:47026 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     10.42.0.54:47552 - "GET /metrics HTTP/1.1" 200 OK
+  from pkg_resources import (
+/usr/local/lib/python3.12/site-packages/opentelemetry/instrumentation/dependencies.py:4: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  from pkg_resources import (
+INFO:     Started server process [9]
+INFO:     Waiting for application startup.
+INFO:     Started server process [8]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Application startup complete.
+INFO:     10.42.0.54:45024 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     10.42.0.54:60534 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33056 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38562 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33060 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33074 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38572 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38582 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33080 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38588 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33084 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38602 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33112 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38608 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38622 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38630 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33128 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33144 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38640 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38656 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/2dc1aec1-140b-4257-9634-db389cd7eb73 (bytes size: 6462) ---
+INFO:     10.42.0.54:33148 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38676 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33160 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33168 - "POST /api/ask/stream HTTP/1.1" 200 OK
+Éxito: oci://bmo-documents/locust_tester/2dc1aec1-140b-4257-9634-db389cd7eb73 (6462 bytes) [application/octet-stream]
+INFO:     10.42.0.54:38700 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38696 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38684 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33186 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33180 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/68cf9187-2e56-4966-ab03-f871e8c12c70 (bytes size: 6462) ---
+Éxito: oci://bmo-documents/locust_tester/68cf9187-2e56-4966-ab03-f871e8c12c70 (6462 bytes) [application/octet-stream]
+INFO:     10.42.0.54:33096 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38664 - "POST /api/ingest HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/7f08f827-71ee-45e4-a857-a3a9b2f4e0c7 (bytes size: 6545) ---
+Éxito: oci://bmo-documents/locust_tester/7f08f827-71ee-45e4-a857-a3a9b2f4e0c7 (6545 bytes) [application/octet-stream]
+INFO:     10.42.0.54:33124 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33124 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38664 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/9bcb5d54-6ea9-4bf3-9a9d-09d0812ae6c8 (bytes size: 6554) ---
+Éxito: oci://bmo-documents/locust_tester/9bcb5d54-6ea9-4bf3-9a9d-09d0812ae6c8 (6554 bytes) [application/octet-stream]
+INFO:     10.42.0.54:41768 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.54:57718 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/fb383ebc-d8ec-4e8f-aa03-aefaff71eb91 (bytes size: 6504) ---
+INFO:     10.42.0.54:43920 - "GET /metrics HTTP/1.1" 200 OK
+Éxito: oci://bmo-documents/locust_tester/fb383ebc-d8ec-4e8f-aa03-aefaff71eb91 (6504 bytes) [application/octet-stream]
+INFO:     10.42.0.54:38316 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38316 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38572 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33060 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38608 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33168 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:48490 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33056 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38602 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33186 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:53736 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33124 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33128 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/3b3f23c2-0548-49cf-a235-9950b8614cb6 (bytes size: 6412) ---
+INFO:     10.42.0.54:38484 - "POST /api/ask/stream HTTP/1.1" 200 OK
+Éxito: oci://bmo-documents/locust_tester/3b3f23c2-0548-49cf-a235-9950b8614cb6 (6412 bytes) [application/octet-stream]
+INFO:     10.42.0.54:38582 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33112 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38696 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33074 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/b9c978aa-eba6-4768-ac58-8160b08184d2 (bytes size: 6450) ---
+Éxito: oci://bmo-documents/locust_tester/b9c978aa-eba6-4768-ac58-8160b08184d2 (6450 bytes) [application/octet-stream]
+INFO:     10.42.0.54:32802 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     10.42.0.54:43624 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.54:43624 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33180 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38588 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:54450 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:58584 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33080 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38700 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38316 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38640 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:44934 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38608 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33752 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:55472 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:37070 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33074 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33128 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     10.42.0.54:37074 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33128 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38602 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33194 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38696 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33180 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:57636 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38676 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:57644 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/0af81442-4631-4ba7-b3b6-223343280626 (bytes size: 6416) ---
+Éxito: oci://bmo-documents/locust_tester/0af81442-4631-4ba7-b3b6-223343280626 (6416 bytes) [application/octet-stream]
+INFO:     10.42.0.54:38588 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38588 - "POST /api/ask/stream HTTP/1.1" 200 OK
+/usr/local/lib/python3.12/selectors.py:74: RuntimeWarning: coroutine 'ClientResponse.json' was never awaited
+  raise KeyError("{!r} is not registered".format(fileobj)) from None
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+MAX_RETRIES (2) reached in grade_task_completion. Giving up.
+No se pudo leer la URL https://www.elrancaguino.cl/2026/04/07/u-catolica-vs-boca-juniors-previa-horario-y-como-llegan-para-la-fecha-1-del-grupo-d-de-la-copa-libertadores/: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+INFO:     10.42.0.54:33124 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:37074 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:58584 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38316 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:54450 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38036 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33056 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38696 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33056 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:39442 - "POST /api/ask/stream HTTP/1.1" 200 OK
+/usr/local/lib/python3.12/site-packages/bs4/builder/__init__.py:411: RuntimeWarning: coroutine 'ClientResponse.json' was never awaited
+  for attr in list(modified_attrs.keys()):
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+INFO:     10.42.0.54:33128 - "POST /api/ask/stream HTTP/1.1" 200 OK
+Grade task completion LLM failed: Error code: 401 - {'error': {'message': 'Incorrect API key provided: AIzaSyBz***************************kOl8. You can find your API key at https://platform.openai.com/account/api-keys.', 'type': 'invalid_request_error', 'param': None, 'code': 'invalid_api_key'}}. Approving task.
+--- DEBUG OCI: locust_tester/04123c90-cdf4-47f9-9a0b-9a5af0b71af7 (bytes size: 6487) ---
+Éxito: oci://bmo-documents/locust_tester/04123c90-cdf4-47f9-9a0b-9a5af0b71af7 (6487 bytes) [application/octet-stream]
+INFO:     10.42.0.54:33194 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38602 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38602 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33160 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/25a8c8a6-0467-46f7-bcb1-012bd94baa9c (bytes size: 6476) ---
+Éxito: oci://bmo-documents/locust_tester/25a8c8a6-0467-46f7-bcb1-012bd94baa9c (6476 bytes) [application/octet-stream]
+INFO:     10.42.0.54:37070 - "POST /api/ingest HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/5d049798-9d3c-41a8-b013-e908fb7c5aea (bytes size: 6459) ---
+INFO:     10.42.0.54:37070 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:44934 - "POST /api/ask/stream HTTP/1.1" 200 OK
+Éxito: oci://bmo-documents/locust_tester/5d049798-9d3c-41a8-b013-e908fb7c5aea (6459 bytes) [application/octet-stream]
+--- DEBUG OCI: locust_tester/ef5ac1e6-8327-492f-b032-2323bdf8e3af (bytes size: 6495) ---
+Éxito: oci://bmo-documents/locust_tester/ef5ac1e6-8327-492f-b032-2323bdf8e3af (6495 bytes) [application/octet-stream]
+INFO:     10.42.0.54:47370 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38220 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33752 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/c967b0c3-0398-4e13-911e-d61a62fc3488 (bytes size: 6451) ---
+Éxito: oci://bmo-documents/locust_tester/c967b0c3-0398-4e13-911e-d61a62fc3488 (6451 bytes) [application/octet-stream]
+INFO:     10.42.0.54:47370 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.54:51326 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/1e5d67b3-a85d-4883-9da4-8e9c3458efe2 (bytes size: 6396) ---
+Éxito: oci://bmo-documents/locust_tester/1e5d67b3-a85d-4883-9da4-8e9c3458efe2 (6396 bytes) [application/octet-stream]
+INFO:     10.42.0.54:47370 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.54:51334 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:51812 - "GET /metrics HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/8d5f2b91-4b8c-468a-8e6a-2af9c0a7b265 (bytes size: 6423) ---
+Éxito: oci://bmo-documents/locust_tester/8d5f2b91-4b8c-468a-8e6a-2af9c0a7b265 (6423 bytes) [application/octet-stream]
+INFO:     10.42.0.54:33080 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.54:34654 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33080 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38696 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:36528 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:57644 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/1e130526-dab8-4281-ad04-c1d6b9837a39 (bytes size: 6488) ---
+Éxito: oci://bmo-documents/locust_tester/1e130526-dab8-4281-ad04-c1d6b9837a39 (6488 bytes) [application/octet-stream]
+INFO:     10.42.0.54:38588 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38608 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:36532 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38588 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/12da59f8-428c-4fd3-b3c6-95ec6fc0020b (bytes size: 6449) ---
+INFO:     10.42.0.54:38036 - "POST /api/ask/stream HTTP/1.1" 200 OK
+Éxito: oci://bmo-documents/locust_tester/12da59f8-428c-4fd3-b3c6-95ec6fc0020b (6449 bytes) [application/octet-stream]
+INFO:     10.42.0.54:57636 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.54:57636 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:43656 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     10.42.0.54:49298 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/c7ef2f06-2f84-4cc1-a973-c08513b509e5 (bytes size: 6389) ---
+Éxito: oci://bmo-documents/locust_tester/c7ef2f06-2f84-4cc1-a973-c08513b509e5 (6389 bytes) [application/octet-stream]
+INFO:     10.42.0.54:43022 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.54:49086 - "POST /api/ask/stream HTTP/1.1" 200 OK
+GradeHallucinations failed parsing (attempt 1). Retrying.
+Task grade_generation_vs_documents with path ('__pregel_pull', 'grade_generation_vs_documents') wrote to unknown channel branch:to:grade_hallucinations, ignoring it.
+No se pudo leer la URL https://www.alairelibre.cl/futbol/copa-libertadores/u-catolica-vs-boca-juniors-en-vivo-minuto-a-minuto-copa-libertadores-2026/: 403 Client Error: Forbidden for url: https://www.alairelibre.cl/futbol/copa-libertadores/u-catolica-vs-boca-juniors-en-vivo-minuto-a-minuto-copa-libertadores-2026/
+GradeHallucinations failed parsing (attempt 1). Retrying.
+Task grade_generation_vs_documents with path ('__pregel_pull', 'grade_generation_vs_documents') wrote to unknown channel branch:to:grade_hallucinations, ignoring it.
+INFO:     10.42.0.54:47210 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33056 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38640 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33128 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:58584 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     10.42.0.54:58584 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/9c5bc499-974f-4263-90de-86fe7dfdbce3 (bytes size: 6380) ---
+Éxito: oci://bmo-documents/locust_tester/9c5bc499-974f-4263-90de-86fe7dfdbce3 (6380 bytes) [application/octet-stream]
+--- DEBUG OCI: locust_tester/3a5137b6-490d-4951-87ee-fde7af9362e9 (bytes size: 6478) ---
+Éxito: oci://bmo-documents/locust_tester/3a5137b6-490d-4951-87ee-fde7af9362e9 (6478 bytes) [application/octet-stream]
+INFO:     10.42.0.54:33186 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.54:59712 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38588 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:57644 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:39442 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:59712 - "POST /api/ask/stream HTTP/1.1" 200 OK
+/usr/local/lib/python3.12/site-packages/langgraph/pregel/_algo.py:1180: RuntimeWarning: coroutine 'ClientResponse.json' was never awaited
+  namespace + b"".join(p.encode() if isinstance(p, str) else p for p in parts)
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+INFO:     10.42.0.54:57740 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:48490 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:44934 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:57636 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:49596 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/c46b79d1-ad54-4e14-9100-f55b1028d9ad (bytes size: 6421) ---
+INFO:     10.42.0.54:38602 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:49086 - "POST /api/ask/stream HTTP/1.1" 200 OK
+Éxito: oci://bmo-documents/locust_tester/c46b79d1-ad54-4e14-9100-f55b1028d9ad (6421 bytes) [application/octet-stream]
+INFO:     10.42.0.54:33128 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38676 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33128 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:41224 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33752 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:39810 - "GET /metrics HTTP/1.1" 200 OK
+No se pudo leer la URL https://www.elrancaguino.cl/2026/04/07/u-catolica-vs-boca-juniors-previa-horario-y-como-llegan-para-la-fecha-1-del-grupo-d-de-la-copa-libertadores/: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+/usr/local/lib/python3.12/site-packages/pydantic/main.py:415: RuntimeWarning: coroutine 'ClientResponse.json' was never awaited
+  copied.__pydantic_fields_set__.update(update.keys())
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+INFO:     10.42.0.54:51496 - "POST /api/ask/stream HTTP/1.1" 200 OK
+/usr/local/lib/python3.12/selectors.py:192: RuntimeWarning: coroutine 'ClientResponse.json' was never awaited
+  raise KeyError("{!r} is not registered".format(fileobj)) from None
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+INFO:     10.42.0.54:58584 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:36528 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:44374 - "POST /api/ask/stream HTTP/1.1" 200 OK
+/usr/local/lib/python3.12/site-packages/langchain_core/runnables/config.py:387: RuntimeWarning: coroutine 'ClientResponse.json' was never awaited
+  set(base.get("tags", []) + (config.get("tags") or [])),
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+INFO:     10.42.0.54:36532 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38588 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:36002 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     10.42.0.54:34654 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:36010 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:44374 - "POST /api/ask/stream HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/54836f53-2f7a-4dc3-b9c5-9c802fe76a0d (bytes size: 6449) ---
+Éxito: oci://bmo-documents/locust_tester/54836f53-2f7a-4dc3-b9c5-9c802fe76a0d (6449 bytes) [application/octet-stream]
+INFO:     10.42.0.54:51496 - "POST /api/ingest HTTP/1.1" 200 OK
+--- DEBUG OCI: locust_tester/32ced585-b76e-49e4-a1b4-0de19539842c (bytes size: 6466) ---
+Éxito: oci://bmo-documents/locust_tester/32ced585-b76e-49e4-a1b4-0de19539842c (6466 bytes) [application/octet-stream]
+INFO:     10.42.0.54:35298 - "POST /api/ingest HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33080 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:35298 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33194 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:54296 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:49298 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:39442 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33752 - "POST /api/ask/stream HTTP/1.1" 200 OK
+GradeHallucinations failed parsing (attempt 2). Retrying.
+Task grade_generation_vs_documents with path ('__pregel_pull', 'grade_generation_vs_documents') wrote to unknown channel branch:to:grade_hallucinations, ignoring it.
+INFO:     10.42.0.54:48490 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:51334 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38700 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:33056 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:49596 - "GET /metrics HTTP/1.1" 200 OK
+INFO:     10.42.0.54:59712 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:49596 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:34850 - "POST /api/ask/stream HTTP/1.1" 200 OK
+INFO:     10.42.0.54:38622 - "POST /api/ask/stream HTTP/1.1" 200 OKs
+
+✅ ¡Exportación completada! Se procesaron 127 runs.
+💾 Archivo generado: docs/tests/locust_09_04_2026_30users\langsmith_metrics_export.csv
+💸 Costo total registrado en este rango: $2.1331
+⏱️ Latencia promedio: 129530.09 ms

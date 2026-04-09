@@ -27,9 +27,9 @@ class Sentences(BaseModel):
 class AgenticChunker:
     """Implementa chunking proposicional utilizando el ecosistema nativo de LangGraph/Agents."""
     def __init__(self, llm_factory):
-        self.plain_agent = llm_factory.create()
-        self.sentences_agent = llm_factory.create(response_format=Sentences)
-        self.chunk_id_agent = llm_factory.create(response_format=ChunkID)
+        self.plain_agent = llm_factory.create_lite()
+        self.sentences_agent = llm_factory.create_lite(response_format=Sentences)
+        self.chunk_id_agent = llm_factory.create_lite(response_format=ChunkID)
         self.chunks = {}
         self.id_truncate_limit = 5
 
@@ -164,7 +164,7 @@ class AgenticChunker:
 
 class GlobalSummarizer:
     def __init__(self, llm_factory):
-        self.fast_agent = llm_factory.create(response_format=DocumentMetadataExtraction)
+        self.fast_agent = llm_factory.create_lite(response_format=DocumentMetadataExtraction)
         
     def analyze(self, text: str) -> Optional[DocumentMetadataExtraction]:
         # Tomar los primeros 5000 caracteres como muestra

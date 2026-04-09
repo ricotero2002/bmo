@@ -1,0 +1,20 @@
+A partir de la siguiente interacción entre el usuario y el asistente, genera un resumen técnico y conciso en tercera persona.
+
+## Interacción
+Usuario: {{ user_input }}
+
+### Procesamiento Intermedio (Herramientas)
+{% if intermediate_messages %}
+{{ intermediate_messages }}
+{% else %}
+No se utilizaron herramientas en este turno.
+{% endif %}
+
+Asistente: {{ ai_output }}
+
+## Instrucciones de resumen
+- Sé breve y directo.
+- Indica qué pidió el usuario, qué herramientas o razonamiento usó el asistente (basándote en el Procesamiento Intermedio) y cuál fue el resultado principal.
+- No uses introducciones como "En esta interacción...".
+- Ejemplo: "El usuario consultó sobre errores de KEDA. El asistente buscó en la base local (knowledge_base_retriever) y reportó un bug conocido en la versión v2.12.0."
+- Hacelo en el mismo idioma de la pregunta

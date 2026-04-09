@@ -1,3 +1,0 @@
-$kind: folder
-name: Ingest PDF
-description: Tests for the POST /api/ingest endpoint

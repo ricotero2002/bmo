@@ -61,7 +61,8 @@ async def lifespan(app: FastAPI):
         app.state.chat_provider = ChatProvider()
         
         yield
-        # Shutdown: al salir del with, el checkpointer cierra su pool correctamente
+        # Shutdown: cerramos el pool del checkpointer
+        await CheckpointerFactory.close_pool()
 
 # Configuración de OpenTelemetry (Solo si se provee el endpoint)
 otel_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")

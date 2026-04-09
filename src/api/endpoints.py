@@ -17,7 +17,7 @@ router = APIRouter()
 # --- EL PATOVICA ASÍNCRONO ---
 # Permitimos un máximo de 10 ejecuciones pesadas (LLM) en paralelo por cada Worker.
 # Esto evita picos de RAM (>2GB) pero permite que las peticiones esperen en fila en vez de dar 503.
-llm_semaphore = asyncio.Semaphore(20)
+llm_semaphore = asyncio.Semaphore(30)
 
 @router.get("/health")
 async def health_check():
@@ -404,7 +404,9 @@ async def ask_agent_stream(
                     tags = event.get("tags", [])
                     
                     if kind == "on_chat_model_start" and "agent_generation" in tags:
-                        if "".join(full_response_text).strip():
+                        # Protección contra errores de tipo en la persistencia
+                        current_response = "".join(str(item) for item in full_response_text)
+                        if current_response.strip():
                             yield f"data: {json.dumps({'type': 'status', 'content': 'Corrigiendo imprecisiones detectadas...'})}\n\n"
                         full_response_text.clear()
                         
@@ -417,8 +419,12 @@ async def ask_agent_stream(
                     elif kind == "on_chat_model_stream" and "agent_generation" in tags:
                         content = event["data"]["chunk"].content
                         if content:
-                            full_response_text.append(content)
-                            yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
+                            # Aseguramos que content sea string (puede ser lista en modelos multimodales/v2)
+                            if isinstance(content, list):
+                                content = "".join(str(c.get("text", c)) if isinstance(c, dict) else str(c) for c in content)
+                            
+                            full_response_text.append(str(content))
+                            yield f"data: {json.dumps({'type': 'token', 'content': str(content)})}\n\n"
                     
                     # --- FIX: CAPTURA DE INPUTS DE LA HERRAMIENTA (Para Status detallado) ---
                     elif kind == "on_tool_start":

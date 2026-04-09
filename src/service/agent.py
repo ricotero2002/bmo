@@ -21,10 +21,10 @@ class AgentService:
     def __init__(self, llm_factory, tools, checkpointer):
         self.llm_factory = llm_factory
         self.model = llm_factory.create(tools=tools)
-        self.grader_docs_model = llm_factory.create(response_format=GradeDocuments)
-        self.grader_hallucinations_model = llm_factory.create(response_format=GradeHallucinations)
-        self.checker_completion_model = llm_factory.create(response_format=GradeCompletion)
-        self.task_planner_model = llm_factory.create(response_format=TaskPlan)
+        self.grader_docs_model = llm_factory.create_lite(response_format=GradeDocuments)
+        self.grader_hallucinations_model = llm_factory.create_lite(response_format=GradeHallucinations)
+        self.checker_completion_model = llm_factory.create_lite(response_format=GradeCompletion)
+        self.task_planner_model = llm_factory.create_lite(response_format=TaskPlan)
         self.tools = tools
         self.checkpointer = checkpointer
         self.prompt_loader = PromptLoader  # Permite acceso dinámico a get_prompt
@@ -46,6 +46,7 @@ class AgentService:
         workflow.add_node("grade_task_completion", self._grade_task_completion)
         workflow.add_node("rewrite_query", self._rewrite_query)
         workflow.add_node("cleanup_rag_memory", self._cleanup_rag_memory)
+        workflow.add_node("summarize_run", self._summarize_run)
         workflow.add_node("summarize_conversation", self._summarize_conversation)
 
         workflow.add_edge(START, "task_planner")
@@ -65,7 +66,8 @@ class AgentService:
         workflow.add_conditional_edges("grade_task_completion", self._grade_task_completion_router)
 
         workflow.add_edge("rewrite_query", "agent")
-        workflow.add_edge("cleanup_rag_memory", "summarize_conversation")
+        workflow.add_edge("cleanup_rag_memory", "summarize_run")
+        workflow.add_edge("summarize_run", "summarize_conversation")
         workflow.add_edge("summarize_conversation", END)
 
         return workflow.compile(checkpointer=self.checkpointer)
@@ -78,9 +80,17 @@ class AgentService:
 
         messages = list(state["messages"])
 
+        # Si el prompt es viejo (no rag_v4), inyectamos el resumen como SystemMessage
+        # para que el asistente tenga el contexto aunque el template no use la variable global_summary.
+        summary = state.get("summary", "")
+        if state.get("prompt_version") != "rag_v4" and summary:
+            messages = [SystemMessage(content=f"Resumen histórico de la conversación: {summary}")] + list(messages)
+
         response = await chain.ainvoke({
             "user_name": user_info.get("name", "Usuario"),
-            "today": date.today().isoformat(),  # "2026-03-19"
+            "today": date.today().isoformat(),
+            "global_summary": summary,
+            "run_summaries": state.get("run_summaries", []),
             "messages": messages
         }, config={"tags": ["agent_generation"]})
 
@@ -120,6 +130,8 @@ class AgentService:
             prompt_text = self.prompt_loader.get_prompt(
                 "task_planner.jinja2",
                 version=state.get("prompt_version", "rag_v3"),
+                global_summary=state.get("summary", ""),
+                run_summaries=state.get("run_summaries", []),
                 context_str=context_str,
                 user_message=last_user_msg,
             )
@@ -148,7 +160,27 @@ class AgentService:
                 last_human_idx = i
         current_turn_msgs = messages[last_human_idx + 1:] if last_human_idx != -1 else messages
 
-        if not getattr(last_message, "content", "").strip():
+        msg_content = getattr(last_message, "content", "")
+        if isinstance(msg_content, list):
+            msg_content = "".join(str(c) for c in msg_content)
+        
+        # --- RECOVERY: Detectar si el modelo intentó llamar herramientas usando código (hallucinación) ---
+        # "tool_code" o "default_api" o nombres de herramientas seguidos de paréntesis
+        hallucinated_code = any(kw in msg_content for kw in ["tool_code", "default_api", f"{_RETRIEVER_TOOL_NAME}("])
+        if not last_message.tool_calls and hallucinated_code:
+            retry_count = state.get("generate_retry_count", 0)
+            if retry_count < MAX_RETRIES:
+                logger.warning(f"Agent hallucinated tool code instead of native call. Retry {retry_count + 1}/{MAX_RETRIES}.")
+                nudge_msg = HumanMessage(content="[SISTEMA]: Has intentado llamar a una herramienta usando código Python (tool_code). ERROR: NO debes usar código. Debes usar la función nativa de llamada a herramienta (tool_call) proporcionada. Por favor, intenta de nuevo.")
+                return Command(
+                    update={
+                        "generate_retry_count": retry_count + 1,
+                        "messages": [nudge_msg]
+                    },
+                    goto="agent"
+                )
+        
+        if not msg_content.strip():
             # Si hubo un uso previo de herramientas de búsqueda, es un fallo de síntesis (no de herramientas)
             retriever_used = any(
                 msg.type == "tool" and msg.name in [_RETRIEVER_TOOL_NAME, "web_search"]
@@ -514,49 +546,159 @@ class AgentService:
         # Si todo está ok, limpiar y terminar
         return "cleanup_rag_memory"
 
-    async def _summarize_conversation(self, state: GraphState):
-        """Resume los mensajes anteriores de la conversación para no exceder los límites de tokens."""
+    async def _summarize_run(self, state: GraphState):
+        """Genera un resumen breve del turno actual e INMEDIATAMENTE poda mensajes intermedios."""
         # --- FIX PARA TESTS: Si no hay checkpointer, no resumimos ni borramos el historial ---
         if self.checkpointer is None:
             return {}
 
         messages = state["messages"]
+        
+        # 1. Encontrar el último mensaje real del usuario
+        last_human_idx = -1
+        for i, msg in enumerate(messages):
+            if msg.type == "human" and not str(msg.content).startswith("[SISTEMA]"):
+                last_human_idx = i
+        
+        if last_human_idx == -1:
+            return {}
 
-        # Extraemos el resumen anterior si ya existe para concatenarlo
-        summary = ""
-        for msg in messages:
-            if isinstance(msg, SystemMessage) and msg.content.startswith("Resumen de la conversación hasta ahora:"):
-                summary = msg.content.replace("Resumen de la conversación hasta ahora: ", "").strip()
-                break
+        user_input = messages[last_human_idx].content
+        ai_output = messages[-1].content  # La respuesta final del agente
 
-        summary_instruction = (
-            f"=== TAREA DE RESUMEN ===\n"
-            f"Resumen histórico previo: '{summary}'\n\n"
-            "Instrucciones:\n"
-            "Lee los mensajes de esta conversación. Si hay un 'Resumen histórico previo', combínalo con la información nueva. "
-            "Si está vacío, simplemente genera un resumen de lo hablado hasta el momento. "
-            "Genera y devuelve ÚNICAMENTE el texto consolidado del resumen, en tercera persona, sin introducciones ni comentarios como 'Aquí tienes...'."
-        )
+        # Normalizar contenido
+        if isinstance(user_input, list):
+            user_input = "".join(str(c) for c in user_input)
+        if isinstance(ai_output, list):
+            ai_output = "".join(str(c) for c in ai_output)
+        
+        # 2. Identificar y recolectar mensajes intermedios para el resumen y posterior borrado
+        intermediate_messages = messages[last_human_idx + 1 : -1]
+        intermediate_logs = []
+        delete_messages = []
 
-        messages_to_summarize = [m for m in messages if not (isinstance(m, SystemMessage) and m.content.startswith("Resumen"))]
+        for msg in intermediate_messages:
+            if msg.type in ["ai", "tool"]:
+                role = "Asistente (Plan)" if msg.type == "ai" else f"Herramienta ({getattr(msg, 'name', 'unknown')})"
+                intermediate_logs.append(f"{role}: {str(msg.content)[:200]}")
+                
+            # Siempre marcamos para borrar si tiene ID (para limpiar la historia)
+            if hasattr(msg, "id") and msg.id:
+                delete_messages.append(RemoveMessage(id=msg.id))
+        
+        intermediate_str = "\n".join(intermediate_logs) if intermediate_logs else ""
+        
+        try:
+            prompt = self.prompt_loader.get_prompt(
+                "summarize_run.jinja2",
+                version=state.get("prompt_version", "rag_v4"),
+                user_input=user_input,
+                ai_output=ai_output,
+                intermediate_messages=intermediate_str
+            )
+            response = await self.model.ainvoke([HumanMessage(content=prompt)])
+            
+            # Devolvemos el nuevo resumen Y la instrucción de borrado
+            return {
+                "run_summaries": [response.content],
+                "messages": delete_messages
+            }
+        except Exception as e:
+            logger.warning(f"Summarize run failed: {e}")
+            return {"messages": delete_messages} # Al menos intentamos limpiar la historia
 
-        if not messages_to_summarize:
-            return {"messages": []}
+    async def _summarize_conversation(self, state: GraphState):
+        """
+        Resume la conversación globalmente si se supera el umbral de mensajes.
+        Colapsa el historial preservando el último Human input, AI output y Summarize Run.
+        """
+        # --- FIX PARA TESTS: Si no hay checkpointer, no resumimos ni borramos el historial ---
+        if self.checkpointer is None:
+            return {}
 
-        response = await self.model.ainvoke(
-            messages_to_summarize + [HumanMessage(content=summary_instruction)]
-        )
+        messages = state["messages"]
+        human_msgs = [m for m in messages if m.type == "human" and not str(m.content).startswith("[SISTEMA]")]
+        
+        # Trigger: >= 4 human messages
+        if len(human_msgs) < 4:
+            return {}
 
-        last_message = messages[-1] if messages else None
+        # 1. Identificar mensajes a preservar (el último turno completo)
+        try:
+            # Ahora el resumen no está en 'messages', sino en 'run_summaries'
+            run_summaries = state.get("run_summaries", [])
+            last_run_summary_text = run_summaries[-1] if run_summaries else ""
+            
+            # Retrocedemos para buscar el par Input/Output real
+            last_ai_response = None
+            last_human_input = None
+            
+            for m in reversed(messages):
+                if last_ai_response is None and m.type == "ai" and not m.tool_calls:
+                    last_ai_response = m
+                elif last_human_input is None and m.type == "human" and not str(m.content).startswith("[SISTEMA]"):
+                    last_human_input = m
+                
+                if last_ai_response and last_human_input:
+                    break
+            
+            if not last_ai_response or not last_human_input:
+                logger.warning("No se pudo identificar el par Input/Output para preservar. Abortando summarization.")
+                return {}
 
-        # Borramos todo exceptuando el ultimo mensaje (el output generado en esta run) 
-        # para que quede en el contexto si en la proxima run el usuario pide hacer algo con eso ("análisis de eso")
-        delete_messages = [RemoveMessage(id=m.id) for m in messages if m.id != getattr(last_message, 'id', None)]
-        new_system_summary = SystemMessage(content=f"Resumen de la conversación hasta ahora: {response.content}")
+            preserved_ids = {last_ai_response.id, last_human_input.id}
+            history_to_collapse = [m for m in messages if m.id not in preserved_ids]
+            
+            # Agregar los resúmenes de corridas previas al historial a colapsar si queremos que el global los incluya
+            run_summaries_str = "\n".join([f"Turno: {s}" for s in run_summaries])
+            
+            # 2. Generar el nuevo resumen consolidado
+            history_str = "\n".join([f"{m.type}: {m.content}" for m in history_to_collapse])
+            history_str += f"\n\nResúmenes de turnos recientes:\n{run_summaries_str}"
+            
+            previous_summary = state.get("summary", "")
 
-        return {
-            "messages": delete_messages + [new_system_summary]
-        }
+            prompt = self.prompt_loader.get_prompt(
+                "summarize_global.jinja2",
+                version=state.get("prompt_version", "rag_v4"),
+                previous_summary=previous_summary,
+                history_str=history_str
+            )
+            
+            response = await self.model.ainvoke([HumanMessage(content=prompt)])
+            
+            # Borramos los mensajes colapsados y RESETEAMOS la lista de summaries locales
+            # ya que ahora están incorporados en el resumen global.
+            return {
+                "summary": response.content,
+                "messages": [RemoveMessage(id=m.id) for m in history_to_collapse],
+                "run_summaries": None # Resetea la lista usando el reductor custom
+            }
+
+            history_str = "\n".join([f"{m.type}: {m.content}" for m in history_to_collapse])
+            previous_summary = state.get("summary", "")
+
+            # 2. Generar el nuevo resumen consolidado
+            prompt = self.prompt_loader.get_prompt(
+                "summarize_global.jinja2",
+                version=state.get("prompt_version", "rag_v4"),
+                previous_summary=previous_summary,
+                history_str=history_str
+            )
+            
+            response = await self.model.ainvoke([HumanMessage(content=prompt)])
+            new_global_summary = response.content
+            
+            # Pruning: Eliminar los mensajes procesados
+            delete_messages = [RemoveMessage(id=m.id) for m in history_to_collapse if hasattr(m, "id") and m.id]
+            
+            return {
+                "summary": new_global_summary,
+                "messages": delete_messages
+            }
+        except Exception as e:
+            logger.warning(f"Global summarization failed: {e}")
+            return {}
 
     async def _cleanup_rag_memory(self, state: GraphState):
         """

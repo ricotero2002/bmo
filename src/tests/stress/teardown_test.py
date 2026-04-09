@@ -61,8 +61,19 @@ def clean_test_documents():
         print(f"🧹 Se encontraron {len(docs)} documentos. Encolando borrado...")
 
         # 2. Iterar y borrar usando el endpoint POST /delete_file
+        deleted_count = 0
+        skipped_count = 0
+        
         for doc in docs:
-            doc_id = doc.get("doc_id")
+            doc_id = doc.get("doc_id", "")
+            filename = doc.get("filename", "")
+            
+            # PROTECCIÓN: Si es un documento del Golden Dataset, NO lo borramos
+            if "eval_doc_fixed_" in doc_id or "eval_doc_fixed_" in filename:
+                print(f"  [SKIP] Preservando Golden Document: {doc_id} ({filename})")
+                skipped_count += 1
+                continue
+            
             payload = {
                 "doc_id": doc_id,
                 "user_id": TEST_USER_ID
@@ -71,10 +82,13 @@ def clean_test_documents():
             
             if del_resp.ok:
                 print(f"  [OK] Documento {doc_id} enviado a la cola de borrado.")
+                deleted_count += 1
             else:
                 print(f"  [ERROR] No se pudo borrar el doc {doc_id}: {del_resp.text}")
                 
-            time.sleep(0.2)
+            time.sleep(0.1)
+        
+        print(f"\nFinalizado: {deleted_count} borrados, {skipped_count} preservados.")
             
     except Exception as e:
         print(f"💥 Excepción durante la limpieza de documentos: {e}")

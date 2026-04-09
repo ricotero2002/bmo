@@ -1,0 +1,3 @@
+Method,Name,Error,Occurrences
+POST,/api/ask/stream,ChunkedEncodingError(ProtocolError('Response ended prematurely')),42
+POST,/api/ingest,HTTPError('502 Server Error: Bad Gateway for url: /api/ingest'),1
