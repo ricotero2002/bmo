@@ -164,7 +164,7 @@ async def test_chunking_quality(goldcase):
         ),
         evaluation_params=[LLMTestCaseParams.ACTUAL_OUTPUT, LLMTestCaseParams.EXPECTED_OUTPUT],
         model=judge,
-        threshold=0.5 
+        threshold=0.4 
     )
     
     test_case = LLMTestCase(

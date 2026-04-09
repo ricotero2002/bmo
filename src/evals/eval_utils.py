@@ -1,6 +1,6 @@
 import logging
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Any, Type
 from deepeval.models.base_model import DeepEvalBaseLLM
 from src.core.llm import LLMFactory
 from src.providers.vector_store.factory import VectorStoreFactory
@@ -41,14 +41,32 @@ class GeminiJudge(DeepEvalBaseLLM):
 
     # --- NUEVO: Decorador de reintento para sobrevivir a 503s de Google ---
     @retry(stop=stop_after_attempt(4), wait=wait_exponential(multiplier=2, min=2, max=15))
-    def generate(self, prompt: str) -> str:
+    def generate(self, prompt: str, schema: Optional[Type] = None, *args, **kwargs) -> Any:
         res = self.model.invoke(prompt)
-        return self._clean_json(res.content)
+        cleaned_content = self._clean_json(res.content)
+        
+        if schema:
+            try:
+                # Si DeepEval pasa un esquema, validamos el JSON manualmente
+                return schema.model_validate_json(cleaned_content)
+            except Exception:
+                return cleaned_content
+        
+        return cleaned_content
 
     @retry(stop=stop_after_attempt(4), wait=wait_exponential(multiplier=2, min=2, max=15))
-    async def a_generate(self, prompt: str) -> str:
+    async def a_generate(self, prompt: str, schema: Optional[Type] = None, *args, **kwargs) -> Any:
         res = await self.model.ainvoke(prompt)
-        return self._clean_json(res.content)
+        cleaned_content = self._clean_json(res.content)
+        
+        if schema:
+            try:
+                # Si DeepEval pasa un esquema, validamos el JSON manualmente
+                return schema.model_validate_json(cleaned_content)
+            except Exception:
+                return cleaned_content
+                
+        return cleaned_content
 
     def get_model_name(self):
         return self.model_name

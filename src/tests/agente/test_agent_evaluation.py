@@ -1,5 +1,6 @@
 import pytest
 import asyncio
+from typing import Optional, Type, Any
 from deepeval import assert_test
 from deepeval.test_case import LLMTestCase
 from deepeval.metrics import FaithfulnessMetric, AnswerRelevancyMetric
@@ -18,20 +19,41 @@ from deepeval.models.base_model import DeepEvalBaseLLM
 # 1. Envoltorio para usar tu LLMFactory como Juez en DeepEval
 class GeminiEvaluator(DeepEvalBaseLLM):
     def __init__(self):
-        # Instanciamos el modelo usando la factoría (sin tools, solo para evaluación)
-        self.llm = LLMFactory.create()
+        # Usamos create_lite para que sea más rápido y barato para evaluación
+        self.model = LLMFactory.create_lite().with_config({"temperature": 0.0})
         
     def load_model(self):
-        return self.llm
+        return self.model
 
-    def generate(self, prompt: str) -> str:
-        chat_model = self.load_model()
-        return chat_model.invoke(prompt).content
+    def _clean_json(self, text: str) -> str:
+        text = text.strip()
+        if text.startswith("```json"):
+            text = text[7:]
+        elif text.startswith("```"):
+            text = text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+        return text.strip()
 
-    async def a_generate(self, prompt: str) -> str:
-        chat_model = self.load_model()
-        res = await chat_model.ainvoke(prompt)
-        return res.content
+    def generate(self, prompt: str, schema: Optional[Type] = None, *args, **kwargs) -> Any:
+        res = self.model.invoke(prompt)
+        cleaned = self._clean_json(res.content)
+        if schema:
+            try:
+                return schema.model_validate_json(cleaned)
+            except Exception:
+                return cleaned
+        return cleaned
+
+    async def a_generate(self, prompt: str, schema: Optional[Type] = None, *args, **kwargs) -> Any:
+        res = await self.model.ainvoke(prompt)
+        cleaned = self._clean_json(res.content)
+        if schema:
+            try:
+                return schema.model_validate_json(cleaned)
+            except Exception:
+                return cleaned
+        return cleaned
 
     def get_model_name(self):
         return "Gemini-Factory-Judge"
@@ -80,8 +102,12 @@ async def test_agent_rag_quality(test_data):
     
     # Dependiendo de cómo devuelve tu agent_service, extraemos el contenido.
     # El método chat de tu Agente devuelve generada como un objeto AIMessage
-    generated_msg_v1 = result_v1.get("generated")
-    response_v1 = generated_msg_v1.content if generated_msg_v1 else result_v1["messages"][-2].content
+    # Extraer respuesta V1 de forma segura
+    response_v1 = ""
+    for m in reversed(result_v1.get("messages", [])):
+        if m.type == "ai":
+            response_v1 = str(m.content)
+            break
     
     test_case_v1 = LLMTestCase(
         input=test_data["input"],
@@ -111,8 +137,12 @@ async def test_agent_rag_quality(test_data):
         prompt_version=os.getenv("PROMPT_VERSION")# La nueva versión o actual a testear
     )
     
-    generated_msg_v2 = result_v2.get("generated")
-    response_v2 = generated_msg_v2.content if generated_msg_v2 else result_v2["messages"][-2].content
+    # Extraer respuesta V2 de forma segura
+    response_v2 = ""
+    for m in reversed(result_v2.get("messages", [])):
+        if m.type == "ai":
+            response_v2 = str(m.content)
+            break
 
 
     test_case_v2 = LLMTestCase(
