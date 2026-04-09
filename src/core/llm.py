@@ -22,23 +22,33 @@ class LLMFactory:
                 model="gemini-2.5-flash",
                 temperature=0,
                 google_api_key=gemini_api_key,
+                model_kwargs={"stream_options": {"include_usage": True}},
                 callbacks=callbacks
             )
         except Exception:
             # Fallback en caso de fallo crítico en el provider de Google
+            model_flash = ChatGoogleGenerativeAI(
+                model="gemini-2.5-flash",
+                temperature=0,
+                google_api_key=gemini_api_key,
+                model_kwargs={"stream_options": {"include_usage": True}},
+                callbacks=callbacks
+            )
+            '''
             model_flash = ChatOpenAI(
                 model="gpt-4o-mini",
                 temperature=0,
                 openai_api_key=os.getenv("OPENAI_API_KEY"),
-                stream_options={"include_usage": True},
+                model_kwargs={"stream_options": {"include_usage": True}},
                 callbacks=callbacks
             )
+            '''
 
         model_lite = ChatOpenAI(
             model="gemini-2.5-flash-lite",
             temperature=0,
             openai_api_key=gemini_api_key,
-            stream_options={"include_usage": True},
+            model_kwargs={"stream_options": {"include_usage": True}},
             callbacks=callbacks
         )
         
@@ -46,23 +56,23 @@ class LLMFactory:
             model="gemini-3-flash-preview",
             temperature=0,
             openai_api_key=gemini_api_key,
-            stream_options={"include_usage": True},
+            model_kwargs={"stream_options": {"include_usage": True}},
             callbacks=callbacks
         )
         
         model_gemma = ChatOpenAI(
-            model="gemma-3-1b-it",
+            model="gemini-3.1-flash-lite-preview",
             temperature=0,
             openai_api_key=gemini_api_key,
-            stream_options={"include_usage": True},
+            model_kwargs={"stream_options": {"include_usage": True}},
             callbacks=callbacks
         )
         
         model_pro = ChatOpenAI(
-            model="gemini-1.5-pro",
+            model="gemini-2.5-pro",
             temperature=0,
             openai_api_key=gemini_api_key,
-            stream_options={"include_usage": True},
+            model_kwargs={"stream_options": {"include_usage": True}},
             callbacks=callbacks
         )
         

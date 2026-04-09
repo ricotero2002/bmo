@@ -1,24 +1,61 @@
 import os
+import argparse
 import pandas as pd
 from langsmith import Client
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 
-
 # 1. Configura tus credenciales 
 # (Reemplaza con tu API Key real si no está en las variables de entorno)
 load_dotenv(override=True)
 os.environ.setdefault("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com")
-os.environ["LANGCHAIN_API_KEY"] = "lsv2_pt_..." 
+# os.environ["LANGCHAIN_API_KEY"] = "lsv2_pt_..."  # Usar desde .env si es posible
 
-# 2. Inicializar cliente
+def parse_time_arg(time_str, default_date=None):
+    if not time_str:
+        return None
+    try:
+        # Try YYYY-MM-DD HH:MM:SS
+        return datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    except ValueError:
+        try:
+            # Try HH:MM:SS (assume default_date or today UTC)
+            if default_date is None:
+                default_date = datetime.now(timezone.utc).date()
+            t = datetime.strptime(time_str, "%H:%M:%S").time()
+            return datetime.combine(default_date, t).replace(tzinfo=timezone.utc)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"Invalid time format: {time_str}. Use YYYY-MM-DD HH:MM:SS or HH:MM:SS")
+
+# 2. Inicializar cliente y parser
+parser = argparse.ArgumentParser(description="Export LangSmith metrics for a specific time range.")
+parser.add_argument("--start", type=str, help="Start time (UTC). Format: YYYY-MM-DD HH:MM:SS or HH:MM:SS")
+parser.add_argument("--end", type=str, help="End time (UTC). Format: YYYY-MM-DD HH:MM:SS or HH:MM:SS")
+parser.add_argument("--output", type=str, help="Output CSV path")
+parser.add_argument("--project", type=str, default="BMO", help="LangSmith project name")
+
+args = parser.parse_args()
+
 client = Client()
-PROJECT_NAME = "BMO"  # El nombre exacto de tu proyecto en LangSmith
+PROJECT_NAME = args.project
 
-# --- FILTRO DE TIEMPO (Basado en tu dataset de Locust) ---
-# El test de hoy (07/04/2026) ocurrió aproximadamente entre las 18:15 y 18:25 UTC.
-START_TIME = datetime(2026, 4, 7, 18, 15, 0, tzinfo=timezone.utc)
-END_TIME = datetime(2026, 4, 7, 18, 30, 0, tzinfo=timezone.utc)
+# --- FILTRO DE TIEMPO ---
+now_utc = datetime.now(timezone.utc)
+today_utc = now_utc.date()
+
+# Defaults if not provided (old values as fallback or just use None)
+START_TIME = parse_time_arg(args.start, today_utc) if args.start else datetime(2026, 4, 7, 18, 15, 0, tzinfo=timezone.utc)
+END_TIME = parse_time_arg(args.end, today_utc) if args.end else datetime(2026, 4, 7, 18, 30, 0, tzinfo=timezone.utc)
+
+# Default output path
+if args.output:
+    output_filename = args.output
+else:
+    # Extract date for the folder name
+    folder_date = START_TIME.strftime("%d_%m_%Y")
+    output_dir = f"docs/tests/locust_{folder_date}_30users"
+    os.makedirs(output_dir, exist_ok=True)
+    output_filename = os.path.join(output_dir, "langsmith_metrics_export.csv")
 
 print(f"📡 Conectando con LangSmith...")
 print(f"🕒 Buscando runs entre {START_TIME} y {END_TIME} en el proyecto '{PROJECT_NAME}'...")
@@ -84,7 +121,7 @@ else:
     df = pd.DataFrame(data)
     df = df.sort_values(by="Start Time", ascending=False)
     
-    output_filename = "docs/tests/locust_07_04_2026_30users/langsmith_metrics_export.csv"
+    # output_filename ya fue definido al inicio
     df.to_csv(output_filename, index=False)
 
     print(f"✅ ¡Exportación completada! Se procesaron {len(df)} runs.")

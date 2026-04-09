@@ -107,3 +107,6 @@ Este script:
 *   **TTFT P95:** Menor a 2 segundos bajo carga moderada (20 usuarios).
 *   **Escalabilidad:** Los workers de Kafka deben escalar proporcionalmente al lag de mensajes.
 *   **Error Rate:** Menor al 1% en peticiones HTTP 200.
+
+
+python scripts/export_langsmith_data.py --start "14:25:13" --end "14:35:30"
