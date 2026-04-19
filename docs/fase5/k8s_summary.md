@@ -297,7 +297,7 @@ helm repo update
 
 helm upgrade --install otel-collector open-telemetry/opentelemetry-collector `
   --namespace observability --create-namespace `
-  -f k8s/otel-collector-values.yaml'
+  -f k8s/prod/otel-collector-values.yaml'
 
 helm upgrade --install otel-collector open-telemetry/opentelemetry-collector -f k8s/otel-collector-values.yaml -n observability
 

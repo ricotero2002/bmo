@@ -44,9 +44,25 @@ spec:
               secretKeyRef:
                 name: app-secrets
                 key: KAFKA_BOOTSTRAP_SERVERS
+          - name: KAFKA_SASL_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: app-secrets
+                key: KAFKA_SASL_USERNAME
+          - name: KAFKA_SASL_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: app-secrets
+                key: KAFKA_SASL_PASSWORD
           # ------------------------------
           - name: OTEL_SERVICE_NAME
             value: "kafka-consumer"
+          - name: OPENSSL_CONF
+            value: "/app/docker/openssl/openssl.cnf"
+          - name: OPENSSL_MODULES
+            value: "/usr/lib/x86_64-linux-gnu/ossl-modules"
+          - name: KAFKA_SSL_PROVIDER
+            value: "legacy"
           - name: PYTHONUNBUFFERED
             value: "1"
           - name: KAFKA_GROUP_ID

@@ -14,3 +14,6 @@ ca.pem
 comandos.md
 src/providers/vector_store/__pycache__/chroma_provider.cpython-314.pyc
 src/providers/vector_store/__pycache__/factory.cpython-314.pyc
+
+.lsp/*
+.clj-kondo/

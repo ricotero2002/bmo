@@ -18,7 +18,7 @@ spec:
   scaleTargetRef:
     name: worker-deployment
   minReplicaCount: 0
-  maxReplicaCount: 1
+  maxReplicaCount: 2
   triggers:
   - type: rabbitmq
     metadata:
@@ -59,7 +59,7 @@ spec:
   scaleTargetRef:
     name: kafka-consumer-deployment
   minReplicaCount: 0      # escala a 0 si no hay mensajes
-  maxReplicaCount: 1      # máximo 1 replica para no saturar procesos de fondo
+  maxReplicaCount: 2      # máximo 2 replicas para no saturar procesos de fondo
   pollingInterval: 15     # chequear lag cada 15s
   cooldownPeriod: 60      # esperar 60s antes de escalar a 0
   triggers:

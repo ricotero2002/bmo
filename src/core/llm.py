@@ -1,82 +1,93 @@
-import os
 from typing import Optional, Type
 from pydantic import BaseModel
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_openai import ChatOpenAI
+from langchain_openrouter import ChatOpenRouter
 from langchain_core.language_models.chat_models import BaseChatModel
 
+
 class LLMFactory:
-    """Fábrica de modelos de lenguaje (LLMFactory) con políticas nativas de Langchain (Retry y Fallback)."""
+    """Fábrica de modelos nativa usando OpenRouter y fallbacks de modelos free."""
+
+    HEAVY_MODEL_NAMES = [
+        "nousresearch/hermes-3-llama-3.1-405b:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+        "qwen/qwen3-next-80b-a3b-instruct:free",
+        "openai/gpt-oss-120b:free",
+        "nvidia/nemotron-3-super-120b-a12b:free",
+        "google/gemma-4-31b-it:free",
+        "google/gemma-4-26b-a4b-it:free",
+        "qwen/qwen3-coder:free",
+        "z-ai/glm-4.5-air:free",
+        "openai/gpt-oss-20b:free",
+        "google/gemma-3-27b-it:free",
+        "nvidia/nemotron-3-nano-30b-a3b:free",
+        "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+        "minimax/minimax-m2.5:free",
+        "nvidia/nemotron-nano-12b-v2-vl:free",
+        "nvidia/nemotron-nano-9b-v2:free",
+        "meta-llama/llama-3.2-3b-instruct:free",
+        "google/gemma-3-4b-it:free",
+        "liquid/lfm-2.5-1.2b-instruct:free",
+        "liquid/lfm-2.5-1.2b-thinking:free",
+        "google/gemma-3n-e4b-it:free",
+        "google/gemma-3n-e2b-it:free",
+    ]
+
+    LITE_MODEL_NAMES = [
+        "meta-llama/llama-3.2-3b-instruct:free",
+        "google/gemma-3-4b-it:free",
+        "nvidia/nemotron-nano-9b-v2:free",
+        "google/gemma-3n-e4b-it:free",
+        "openai/gpt-oss-20b:free",
+        "liquid/lfm-2.5-1.2b-instruct:free",
+        "minimax/minimax-m2.5:free",
+        "google/gemma-3n-e2b-it:free",
+        "google/gemma-3-27b-it:free",
+        "nvidia/nemotron-3-nano-30b-a3b:free",
+        "google/gemma-4-26b-a4b-it:free",
+        "google/gemma-4-31b-it:free",
+        "qwen/qwen3-coder:free",
+        "z-ai/glm-4.5-air:free",
+        "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+        "qwen/qwen3-next-80b-a3b-instruct:free",
+        "openai/gpt-oss-120b:free",
+        "nvidia/nemotron-3-super-120b-a12b:free",
+        "nousresearch/hermes-3-llama-3.1-405b:free",
+        "nvidia/nemotron-nano-12b-v2-vl:free",
+        "liquid/lfm-2.5-1.2b-thinking:free",
+    ]
+
+    PLANNER_PRIMARY = "liquid/lfm-2.5-1.2b-thinking:free"
+    JUDGE_PRIMARY = "meta-llama/llama-3.3-70b-instruct:free"
+    JUDGE_SECONDARY = "google/gemma-4-31b-it:free"
+    CODER_PRIMARY = "qwen/qwen3-coder:free"
 
     @classmethod
-    def _get_models(cls):
+    def _base_kwargs(cls) -> dict:
         from src.core.telemetry import TelemetryCallbackHandler
-        callbacks = [TelemetryCallbackHandler()]
-        
-        gemini_api_key = os.getenv("GOOGLE_API_KEY", "")
-        # Usamos la misma clave para los modelos que usamos vía OpenAI Proxy (Gemini)
-        
-        # --- Definición del catálogo de modelos ---
-        try:
-            model_flash = ChatGoogleGenerativeAI(
-                model="gemini-2.5-flash",
-                temperature=0,
-                google_api_key=gemini_api_key,
-                model_kwargs={"stream_options": {"include_usage": True}},
-                callbacks=callbacks
-            )
-        except Exception:
-            # Fallback en caso de fallo crítico en el provider de Google
-            model_flash = ChatGoogleGenerativeAI(
-                model="gemini-2.5-flash",
-                temperature=0,
-                google_api_key=gemini_api_key,
-                model_kwargs={"stream_options": {"include_usage": True}},
-                callbacks=callbacks
-            )
-            '''
-            model_flash = ChatOpenAI(
-                model="gpt-4o-mini",
-                temperature=0,
-                openai_api_key=os.getenv("OPENAI_API_KEY"),
-                model_kwargs={"stream_options": {"include_usage": True}},
-                callbacks=callbacks
-            )
-            '''
 
-        model_lite = ChatOpenAI(
-            model="gemini-2.5-flash-lite",
-            temperature=0,
-            openai_api_key=gemini_api_key,
-            model_kwargs={"stream_options": {"include_usage": True}},
-            callbacks=callbacks
-        )
-        
-        model_flash_preview = ChatOpenAI(
-            model="gemini-3-flash-preview",
-            temperature=0,
-            openai_api_key=gemini_api_key,
-            model_kwargs={"stream_options": {"include_usage": True}},
-            callbacks=callbacks
-        )
-        
-        model_gemma = ChatOpenAI(
-            model="gemini-3.1-flash-lite-preview",
-            temperature=0,
-            openai_api_key=gemini_api_key,
-            model_kwargs={"stream_options": {"include_usage": True}},
-            callbacks=callbacks
-        )
-        
-        model_pro = ChatOpenAI(
-            model="gemini-2.5-pro",
-            temperature=0,
-            openai_api_key=gemini_api_key,
-            model_kwargs={"stream_options": {"include_usage": True}},
-            callbacks=callbacks
-        )
-        
-        return model_flash, model_lite, model_flash_preview, model_gemma, model_pro
+        callbacks = [TelemetryCallbackHandler()]
+        return {
+            "temperature": 0,
+            "callbacks": callbacks,
+            "model_kwargs": {"stream_options": {"include_usage": True}},
+        }
+
+    @classmethod
+    def _dedupe_preserve_order(cls, model_names: list[str]) -> list[str]:
+        seen = set()
+        unique = []
+        for name in model_names:
+            if name in seen:
+                continue
+            seen.add(name)
+            unique.append(name)
+        return unique
+
+    @classmethod
+    def _build_models_from_names(cls, model_names: list[str]):
+        kwargs = cls._base_kwargs()
+        return [ChatOpenRouter(model=name, **kwargs) for name in model_names]
 
     @classmethod
     def _bind_and_fallback(cls, models, tools, response_format):
@@ -102,26 +113,37 @@ class LLMFactory:
 
     @classmethod
     def create(cls, tools = None, response_format: Optional[Type[BaseModel]] = None) -> BaseChatModel:
-        """
-        Crea el modelo PRINCIPAL para el agente (Pesado).
-        Jerarquía: flash -> preview -> lite -> pro -> gemma
-        """
-        model_flash, model_lite, model_flash_preview, model_gemma, model_pro = cls._get_models()
-        
-        # Orden para el agente pesado
-        models = [model_flash, model_flash_preview, model_lite, model_pro, model_gemma]
-        
+        """Modelo principal de razonamiento pesado (lista HEAVY)."""
+        models = cls._build_models_from_names(cls.HEAVY_MODEL_NAMES)
         return cls._bind_and_fallback(models, tools, response_format)
 
     @classmethod
     def create_lite(cls, tools = None, response_format: Optional[Type[BaseModel]] = None) -> BaseChatModel:
-        """
-        Crea el modelo LIGERO para grading, planificación, resumen y chunking.
-        Jerarquía: lite -> flash -> preview -> gemma
-        """
-        model_flash, model_lite, model_flash_preview, model_gemma, _ = cls._get_models()
-        
-        # Orden para tareas rutinarias y estructuradas (empezamos por lite)
-        models = [model_lite, model_flash, model_flash_preview, model_gemma]
-        
+        """Modelo rápido para resumen, extracción y clasificación liviana (lista LITE)."""
+        models = cls._build_models_from_names(cls.LITE_MODEL_NAMES)
+        return cls._bind_and_fallback(models, tools, response_format)
+
+    @classmethod
+    def create_planner(cls, tools=None, response_format: Optional[Type[BaseModel]] = None) -> BaseChatModel:
+        """Especialista de planificación, prioriza un modelo thinking."""
+        model_names = cls._dedupe_preserve_order([cls.PLANNER_PRIMARY, *cls.LITE_MODEL_NAMES])
+        models = cls._build_models_from_names(model_names)
+        return cls._bind_and_fallback(models, tools, response_format)
+
+    @classmethod
+    def create_judge(cls, tools=None, response_format: Optional[Type[BaseModel]] = None) -> BaseChatModel:
+        """Especialista de evaluación crítica (faithfulness/relevancy)."""
+        model_names = cls._dedupe_preserve_order([
+            cls.JUDGE_PRIMARY,
+            cls.JUDGE_SECONDARY,
+            *cls.HEAVY_MODEL_NAMES,
+        ])
+        models = cls._build_models_from_names(model_names)
+        return cls._bind_and_fallback(models, tools, response_format)
+
+    @classmethod
+    def create_coder(cls, tools=None, response_format: Optional[Type[BaseModel]] = None) -> BaseChatModel:
+        """Especialista en estructura/JSON para tasks de chunking agentico."""
+        model_names = cls._dedupe_preserve_order([cls.CODER_PRIMARY, *cls.LITE_MODEL_NAMES])
+        models = cls._build_models_from_names(model_names)
         return cls._bind_and_fallback(models, tools, response_format)

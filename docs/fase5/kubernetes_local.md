@@ -56,6 +56,7 @@ Crea el clúster mapeando puertos:
 
 Bash
 k3d cluster create mycluster -p "8081:80@loadbalancer" --agents 2
+k3d cluster create mycluster -p "8081:80@loadbalancer"
 Aquí le decimos: "Lo que llegue a mi puerto 8081, mándalo al puerto 80 del Load Balancer interno de Kubernetes".
 
 Instala NGINX Ingress Controller:
@@ -368,3 +369,122 @@ kubectl apply -f k8s/infisical-config.yaml
 # Aplicaciones y KEDA
 kubectl apply -f k8s/apps-deployment.yaml
 kubectl apply -f k8s/keda-scaler.yaml
+
+
+
+Los errores que estás viendo son súper comunes cuando se levanta un clúster de cero. Vamos a diagnosticar exactamente por qué pasaron antes de pasar a la guía:
+
+1. **Error de Infisical (`no matches for kind "InfisicalSecret"`)**: Kubernetes, por defecto, no tiene ni idea de qué es un `InfisicalSecret`. Es un "Custom Resource" (Recurso Personalizado). Para que lo entienda, primero hay que instalar las **CRDs (Custom Resource Definitions)**, lo cual se logra instalando el Operador de Infisical en el clúster. Como el operador no estaba, Kubernetes rechazó tu archivo.
+2. **Error de OpenTelemetry (`apiVersion not set, kind not set`)**: Intentaste usar `kubectl apply -f` con el archivo `otel-collector-values.yaml`. Ese archivo **no es un manifiesto de Kubernetes**, es un archivo de "Valores" para **Helm**. No se puede inyectar directo con `kubectl`, se tiene que pasar como parámetro al comando `helm install` o `helm upgrade`.
+
+Aquí tienes la **guía paso a paso, en el orden estricto** en el que debes ejecutar las cosas para levantar tu clúster de K3D desde cero sin que nada falle.
+
+---
+
+### Fase 0: Limpieza total (Recomendado)
+Si tu clúster actual está corrupto o a medias, lo mejor es matarlo y arrancar limpio.
+```powershell
+k3d cluster delete mycluster
+```
+
+### Fase 1: Infraestructura y Clúster Base
+Primero levantamos las bases de datos en Docker y luego creamos el clúster vacío.
+
+```powershell
+# 1. Levantar bases de datos, Kafka, Redis, etc.
+docker compose up -d
+
+# 2. Crear el clúster de k3d
+k3d cluster create mycluster --api-port 127.0.0.1:6443 -p "8081:80@loadbalancer"
+
+# 3. Actualizar tu puntero de kubectl
+k3d kubeconfig merge mycluster -d -s
+```
+
+### Fase 2: Instalar Operadores y CRDs (¡Soluciona el Error 1!)
+Antes de meter tu aplicación, Kubernetes necesita aprender a leer recursos de KEDA e Infisical. Lo hacemos instalando sus operadores vía Helm.
+
+```powershell
+# 1. Instalar KEDA (Para el autoescalado)
+helm repo add kedacore https://kedacore.github.io/charts
+helm repo update
+helm upgrade --install keda kedacore/keda --namespace keda --create-namespace
+
+# 2. Instalar Infisical Operator (Para que entienda los InfisicalSecret)
+helm repo add infisical https://dl.cloudsmith.io/public/infisical/helm-charts/helm/charts/
+helm repo update
+helm upgrade --install infisical-operator infisical/secrets-operator --namespace infisical-operator-system --create-namespace
+
+### Fase 3: Crear Namespaces y Secretos Manuales
+Preparamos los "barrios" y metemos los secretos duros que necesitan existir antes del despliegue.
+
+```powershell
+# 1. Crear los namespaces
+kubectl create namespace personal-ai
+kubectl create namespace observability
+
+# 2. Secreto de Kafka (Certificado CA)
+kubectl create secret generic kafka-ca-cert --from-file=ca.pem=./ca.pem -n personal-ai
+
+# 3. Secreto de Autenticación de Infisical (Reemplaza los valores con los tuyos)
+kubectl create secret generic infisical-auth-secret `
+  --from-literal=clientId="TU_CLIENT_ID_REAL" `
+  --from-literal=clientSecret="TU_CLIENT_SECRET_REAL" `
+  --namespace personal-ai
+
+# 4. Secreto de Grafana Cloud para OpenTelemetry
+kubectl create secret generic grafana-otel-secret `
+  --from-literal=endpoint="https://otlp-gateway-prod-us-east-0.grafana.net/otlp" `
+  --from-literal=auth="Basic TU_TOKEN_BASE64" `
+  --namespace observability
+```
+
+### Fase 4: OpenTelemetry (¡Soluciona el Error 2!)
+Usamos Helm para desplegar el colector, pasándole tu archivo de valores.
+
+```powershell
+helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+helm repo update
+
+# Aquí es donde usamos el archivo .yaml correctamente:
+helm upgrade --install otel-collector open-telemetry/opentelemetry-collector `
+  --namespace observability `
+  -f k8s/prod/otel-collector-values.yaml
+```
+
+### Fase 5: Compilar e Importar Imágenes
+Construimos el código y se lo pasamos al cerebro de K3D.
+
+```powershell
+# 1. Build de las imágenes (API y Worker)
+docker build --target final-api -t personal_ai_api:latest -f docker/Dockerfile .
+docker build --target final-worker -t personal_ai_worker:latest -f docker/Dockerfile .
+
+# 2. Importar al clúster
+k3d image import personal_ai_api:latest personal_ai_worker:latest -c mycluster
+```
+
+### Fase 6: Despliegue Final de tu Aplicación
+Ahora sí, Kubernetes ya tiene todas las herramientas, secretos y definiciones necesarias para leer tus manifiestos de producción.
+
+```powershell
+# 1. Variables de entorno no secretas
+kubectl apply -f k8s/prod/app-configmap.yaml
+
+# 2. Sincronización de secretos (Ahora sí funcionará porque instalaste el operador en la Fase 2)
+kubectl apply -f k8s/prod/infisical-config.yaml
+
+# 3. Desplegar los Pods (API, Celery Worker, Kafka Consumer)
+kubectl apply -f k8s/prod/apps-deployment.yaml
+kubectl apply -f k8s/prod/kafka-deployment.yaml
+
+# 4. Reglas de Autoescalado
+kubectl apply -f k8s/prod/keda-scaler.yaml
+kubectl apply -f k8s/prod/api-hpa.yaml
+```
+
+### Fase 7: Verificación
+```powershell
+# Mirar cómo nacen los pods
+kubectl get pods -n personal-ai -w
+```

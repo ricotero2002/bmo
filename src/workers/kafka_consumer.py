@@ -4,6 +4,10 @@ import uuid
 import logging
 import asyncio
 from datetime import datetime, timezone
+from src.providers.messaging.openssl_runtime import configure_openssl_runtime
+
+configure_openssl_runtime()
+
 from confluent_kafka import Consumer, KafkaError, KafkaException, Producer
 from src.core.config import settings
 from src.service.orchestrator import IngestionOrchestrator
@@ -41,7 +45,18 @@ DLT_TOPIC  = settings.KAFKA_DLT_TOPIC  # Dead Letter Topic
 MAX_CONSUMER_RETRIES = 3
 GROUP_ID = os.getenv("KAFKA_GROUP_ID", "document-ingestor-v4")
 
-orchestrator = IngestionOrchestrator()
+
+async def _build_orchestrator_with_retry() -> IngestionOrchestrator:
+    retry_seconds = int(os.getenv("KAFKA_ORCHESTRATOR_RETRY_SECONDS", "15"))
+    while True:
+        try:
+            return IngestionOrchestrator()
+        except Exception as exc:
+            logger.error(
+                "No se pudo inicializar el orquestador de ingesta. "
+                f"Reintentando en {retry_seconds}s: {exc}"
+            )
+            await asyncio.sleep(retry_seconds)
 
 
 
@@ -49,6 +64,8 @@ orchestrator = IngestionOrchestrator()
 async def run_consumer():
     # Inicialización diferida para asegurar settings cargados y OTel listo
     logger.info(f"Conectando a Kafka: {settings.KAFKA_BOOTSTRAP_SERVERS} (env={settings.APP_ENV})")
+
+    orchestrator = await _build_orchestrator_with_retry()
 
     conf = build_kafka_conf({
         "group.id": GROUP_ID,

@@ -1,200 +1,82 @@
 services:
-  # ============================================
-  # Infraestructura Base
-  # ============================================
-
-  # Base de Datos Vectorial
-  chromadb:
-    image: chromadb/chroma:latest
-    container_name: chromadb-server
-    ports:
-      - "8000:8000"
-    volumes:
-      - chroma-data:/app/chroma/chroma-data
-    environment:
-      - IS_PERSISTENT=TRUE
-      - ANONYMIZED_TELEMETRY=FALSE
-    restart: unless-stopped
-
-  # Base de Datos Relacional (Record Manager)
-  db:
-    image: postgres:15
-    container_name: postgres-db
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
-      POSTGRES_DB: ${POSTGRES_DB:-record_manager}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    restart: unless-stopped
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-user} -d $${POSTGRES_DB:-record_manager}" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # Redis Stack (Cache y Backend de Celery)
-  redis:
-    image: redis/redis-stack:latest
-    container_name: personal_ai_redis
-    ports:
-      - "6379:6379"
-      - "8005:8001" # RedisInsight UI (mapeado a 8005 para evitar conflictos)
-    volumes:
-      - redis-data:/data
-    healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  # RabbitMQ (Broker de Celery)
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: personal_ai_rabbitmq
-    ports:
-      - "5672:5672"
-      - "15672:15672" # Management UI
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-    healthcheck:
-      test: [ "CMD", "rabbitmq-diagnostics", "check_running" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  # ============================================
-  # Aplicaciones
-  # ============================================
-
-  # Migraciones de base de datos (Alembic)
-  db-migrate:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
-      target: api
-    container_name: personal_ai_db_migrate
+  spark-iceberg:
+    image: tabulario/spark-iceberg:latest
+    container_name: bmo_lakehouse_spark
     depends_on:
-      db:
-        condition: service_healthy
-    env_file: ../.env.local
+      - minio
+      - rest
     environment:
-      - DB_HOST=db
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-lakehouse}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-lakehouse123}
+      AWS_REGION: us-east-1
     volumes:
-      - ..:/app
-    command: alembic upgrade head
-    restart: "no"
+      - ../lakehouse/warehouse:/home/iceberg/warehouse
+      - ../lakehouse/notebooks:/home/iceberg/notebooks/notebooks
+    ports:
+      - "8888:8888"
+      - "8080:8080"
+    restart: unless-stopped
 
-  # FastAPI API (Movido a Kubernetes)
-  # api:
-  #   build:
-  #     context: ..
-  #     dockerfile: docker/Dockerfile
-  #     target: api
-  #   container_name: personal_ai_api
-  # ... (resto comentado)
-
-  # Celery Worker (Movido a Kubernetes para KEDA)
-  # worker:
-  #   build:
-  #     context: ..
-  #     dockerfile: docker/Dockerfile
-  #     target: worker
-  # ... (resto comentado)
-
-  # Flower (Monitoring - Opcional, puedes dejarlo en compose o moverlo)
-  # flower:
-  #   build:
-  #     context: ..
-  #     dockerfile: docker/Dockerfile
-  #     target: flower
-  #   container_name: personal_ai_flower
-
-  # Kafka Consumer (Puente entre Kafka y RabbitMQ - Movido a Kubernetes)
-  # kafka-consumer:
-  #   build:
-  #     context: ..
-  #     dockerfile: docker/Dockerfile
-  #     target: worker
-  #   container_name: personal_ai_kafka_consumer
-  # ... (resto comentado)
-  # MinIO (Object Storage)
   minio:
-    image: minio/minio:latest
-    container_name: personal_ai_minio
+    image: minio/minio:RELEASE.2025-01-20T14-49-07Z
+    container_name: bmo_lakehouse_minio
     ports:
       - "9000:9000"
-      - "9001:9001" # Console UI
+      - "9001:9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-password}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-lakehouse}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-lakehouse123}
+    command: server /data --console-address ":9001"
     volumes:
       - minio-data:/data
-    command: server /data --console-address ":9001"
-    restart: unless-stopped
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # Apache Kafka (KRaft mode - No Zookeeper)
-  kafka:
-    image: apache/kafka:3.7.0
-    container_name: personal_ai_kafka
-    ports:
-      - "9092:9092"
-    environment:
-      KAFKA_NODE_ID: 1
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:9093
-      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://host.k3d.internal:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_MESSAGE_MAX_BYTES: 104857600
-      KAFKA_REPLICA_FETCH_MAX_BYTES: 104857600
-      KAFKA_CLUSTER_ID: "fQEKGPQsQtSJMUICvEYA9g"
-      KAFKA_LOG_DIRS: /var/lib/kafka/data
-    volumes:
-      - kafka-data:/var/lib/kafka/data
     restart: unless-stopped
 
-  # Kafka UI para monitoreo
-  kafka-ui:
-    image: provectuslabs/kafka-ui:latest
-    container_name: personal_ai_kafka_ui
-    ports:
-      - "8080:8080"
-    environment:
-      KAFKA_CLUSTERS_0_NAME: local
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+  minio-init:
+    image: minio/mc:RELEASE.2025-01-17T23-25-50Z
+    container_name: bmo_lakehouse_minio_init
     depends_on:
-      - kafka
-    restart: unless-stopped
+      - minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-lakehouse}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-lakehouse123}
+    entrypoint: >
+      /bin/sh -c "
+      set -e;
+      i=0;
+      until mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD; do
+        i=$$((i+1));
+        if [ $$i -ge 30 ]; then
+          echo 'MinIO no estuvo disponible luego de 30 intentos';
+          exit 1;
+        fi;
+        echo 'Esperando MinIO... intento' $$i;
+        sleep 2;
+      done;
+      mc mb -p local/bronze;
+      mc mb -p local/silver;
+      mc mb -p local/gold;
+      mc mb -p local/warehouse;
+      echo 'Buckets bronze/silver/gold/warehouse creados';
+      "
+    restart: "no"
 
-  # Tópicos automáticos al inicio
-  kafka-init-topics:
-    image: apache/kafka:3.7.0
-    container_name: kafka-init-topics
+  rest:
+    image: tabulario/iceberg-rest:latest
+    container_name: bmo_lakehouse_rest
     depends_on:
-      - kafka
-    command: >
-      /bin/sh -c " echo 'Esperando a Kafka...'; /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --list; echo 'Creando tópicos...'; /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --create --if-not-exists --topic raw-documents --partitions 6 --replication-factor 1 --config retention.ms=604800000 --config cleanup.policy=delete --config max.message.bytes=104857600; /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --create --if-not-exists --topic raw-documents-dlt --partitions 1 --replication-factor 1 --config max.message.bytes=104857600; echo 'Tópicos creados exitosamente.';"
+      - minio
+    environment:
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-lakehouse}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-lakehouse123}
+      AWS_REGION: us-east-1
+      CATALOG_WAREHOUSE: s3://warehouse/
+      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
+      CATALOG_S3_ENDPOINT: http://minio:9000
+      CATALOG_S3_PATH_STYLE_ACCESS: "true"
+      CATALOG_S3_PATH__STYLE__ACCESS: "true"
+    ports:
+      - "8181:8181"
+    restart: unless-stopped
 
 volumes:
-  chroma-data:
-  postgres-data:
-  redis-data:
   minio-data:
-  kafka-data:

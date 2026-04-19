@@ -1,6 +1,10 @@
 import os
+import logging
 import certifi
 from src.core.config import settings
+from src.providers.messaging.openssl_runtime import configure_openssl_runtime
+
+logger = logging.getLogger(__name__)
 
 
 def build_kafka_conf(extra: dict = None) -> dict:
@@ -27,19 +31,45 @@ def build_kafka_conf(extra: dict = None) -> dict:
     }
 
     if settings.APP_ENV == "production":
+        openssl_runtime = configure_openssl_runtime()
+        logger.info(
+            "Kafka OpenSSL runtime configurado",
+            extra={
+                "openssl_conf": openssl_runtime.get("openssl_conf"),
+                "openssl_modules": openssl_runtime.get("openssl_modules"),
+                "provider": openssl_runtime.get("kafka_ssl_provider"),
+            },
+        )
+
+        username = os.getenv("KAFKA_SASL_USERNAME")
+        password = os.getenv("KAFKA_SASL_PASSWORD")
+        if not username or not password:
+            raise ValueError("Kafka production config requires KAFKA_SASL_USERNAME and KAFKA_SASL_PASSWORD")
+
         base.update({
             "security.protocol": "SASL_SSL",
             "sasl.mechanisms": "SCRAM-SHA-256",
-            "sasl.username": os.getenv("KAFKA_SASL_USERNAME"),
-            "sasl.password": os.getenv("KAFKA_SASL_PASSWORD"),
+            "sasl.username": username,
+            "sasl.password": password,
         })
 
         ca_location = os.getenv("KAFKA_SSL_CA_LOCATION")
         if ca_location:
             ca_location = os.path.abspath(ca_location)
-            base["ssl.ca.location"] = ca_location if os.path.exists(ca_location) else certifi.where()
+            if os.path.exists(ca_location):
+                base["ssl.ca.location"] = ca_location
+            else:
+                logger.warning(
+                    "KAFKA_SSL_CA_LOCATION no existe en %s, usando certifi como fallback",
+                    ca_location,
+                )
+                base["ssl.ca.location"] = certifi.where()
         else:
             base["ssl.ca.location"] = certifi.where()
+
+        if os.getenv("KAFKA_SSL_DEBUG", "").lower() in {"1", "true", "yes"}:
+            base["debug"] = "security,broker"
+            base["ssl.endpoint.identification.algorithm"] = "none"
 
     if extra:
         base.update(extra)

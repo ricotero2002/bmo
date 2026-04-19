@@ -21,10 +21,10 @@ class AgentService:
     def __init__(self, llm_factory, tools, checkpointer):
         self.llm_factory = llm_factory
         self.model = llm_factory.create(tools=tools)
-        self.grader_docs_model = llm_factory.create_lite(response_format=GradeDocuments)
-        self.grader_hallucinations_model = llm_factory.create_lite(response_format=GradeHallucinations)
+        self.grader_docs_model = llm_factory.create_judge(response_format=GradeDocuments)
+        self.grader_hallucinations_model = llm_factory.create_judge(response_format=GradeHallucinations)
         self.checker_completion_model = llm_factory.create_lite(response_format=GradeCompletion)
-        self.task_planner_model = llm_factory.create_lite(response_format=TaskPlan)
+        self.task_planner_model = llm_factory.create_planner(response_format=TaskPlan)
         self.tools = tools
         self.checkpointer = checkpointer
         self.prompt_loader = PromptLoader  # Permite acceso dinámico a get_prompt

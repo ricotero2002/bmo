@@ -52,17 +52,24 @@ FROM python:3.12-slim AS base-final
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    OPENSSL_CONF=/app/docker/openssl/openssl.cnf \
+    OPENSSL_MODULES=/usr/lib/x86_64-linux-gnu/ossl-modules \
+    KAFKA_SSL_PROVIDER=legacy
 
 # Solo curl y ca-certs para healthchecks y Kafka (sin gcc)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
+    openssl \
     libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar dependencias ya compiladas del builder
 COPY --from=builder /install /usr/local
+
+# Copiar configuración OpenSSL explícita para el legacy provider
+COPY docker/openssl/ /app/docker/openssl/
 
 WORKDIR /app
 
@@ -108,16 +115,22 @@ FROM python:3.12-slim AS local
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    OPENSSL_CONF=/app/docker/openssl/openssl.cnf \
+    OPENSSL_MODULES=/usr/lib/x86_64-linux-gnu/ossl-modules \
+    KAFKA_SSL_PROVIDER=legacy
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
+    openssl \
     libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar dependencias de local (incluye testing y flower)
 COPY --from=builder-local /install /usr/local
+
+COPY docker/openssl/ /app/docker/openssl/
 
 WORKDIR /app
 COPY src/ ./src/
