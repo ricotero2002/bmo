@@ -95,22 +95,22 @@ Se actualizo [docker/docker-compose.yml](docker/docker-compose.yml) para que con
 4. `rest`
     - Catalogo REST de Iceberg (`tabulario/iceberg-rest:latest`).
     - Expone `8181`.
-    - Usa MinIO como backend S3 del catalogo.
-
-## Stack final (fuera de Kubernetes)
-
+     dags/
+        pipeline_llm_telemetry.py      # Orquestacion: fuente -> bronze -> silver -> gold
+     tasks/
+        ingest_bronze.py               # Carga cruda del CSV o MLflow hacia Iceberg
 - MinIO para almacenamiento de objetos.
 - Spark (imagen Tabular) para procesamiento y notebooks.
-- Iceberg REST catalog para metadata centralizada.
-- Iceberg como formato transaccional de tablas sobre objetos en S3.
-
-No quedan servicios operacionales (API, DB, Redis, Kafka, Chroma, etc.) en este compose.
-
+  dbt_project.yml                  # Configuracion principal de dbt
+  models/
+     bronze/
+     silver/
+     gold/
 ## Como levantar
-
-Desde la raiz del repo:
-
-```bash
+     bronze/
+     silver/
+     gold/
+     warehouse/
 docker compose -f docker/docker-compose.yml up -d
 ```
 
@@ -470,6 +470,115 @@ ORDER BY event_ts DESC;
 3. Gold:
     - Agregados de negocio y tablas consumibles por BI/agente en `lakehouse.gold.*`.
 
+## Probar el datalake con CSV o MLflow
+
+Antes de conectar la fuente real de MLflow, la forma mas segura de validar el flujo es simular la ingesta con un CSV exportado de LangSmith o con una extraccion minima de runs de MLflow.
+
+La idea es probar el recorrido completo sin escribir todavia el DAG ni los modelos finales:
+
+1. Fuente de prueba.
+    - CSV con trazas de LLM.
+    - O una exportacion simple de MLflow con los campos basicos de cada run.
+2. Bronze.
+    - Cargar los datos crudos en `lakehouse.bronze.raw_llm_traces` o `lakehouse.bronze.llm_traces`.
+    - No normalizar demasiado en este paso.
+3. Silver.
+    - Limpiar tipos, parsear fechas, separar tags y detectar errores.
+4. Gold.
+    - Generar agregados de negocio para analitica y visualizacion.
+
+### Esqueleto del flujo que vas a implementar mas adelante
+
+```text
+airflow/
+  dags/
+     pipeline_llm_telemetry.py      # Orquestacion: fuente -> bronze -> silver -> gold
+  tasks/
+     ingest_bronze.py               # Carga cruda del CSV o MLflow hacia Iceberg
+
+dbt/
+  dbt_project.yml                  # Configuracion principal de dbt
+  models/
+     bronze/
+        sources.yml                  # Definicion de la fuente cruda
+     silver/
+        stg_agent_runs.sql           # Limpieza y tipado
+     gold/
+        fact_llm_costs.sql           # Agregados de costos y tokens
+        fact_agent_performance.sql   # Latencia y success rate
+        fact_evaluations.sql         # Evaluaciones cruzadas con DeepEval
+```
+
+### Que haria cada capa en esa prueba
+
+Bronze:
+
+- Guardar cada fila tal como llega desde el CSV o desde MLflow.
+- Conservar columnas como `run_id`, `start_time`, `latency_ms`, `status`, `user_id`, `prompt_tokens`, `completion_tokens`, `tags`.
+- Si hace falta, solo aplicar cambios minimos de formato para que Iceberg lo reciba sin romperse.
+
+Silver:
+
+- Convertir `start_time` a `TIMESTAMP`.
+- Normalizar `tags` para extraer el tipo de test o convertirlas en array.
+- Separar registros fallidos en una tabla de anomalías.
+
+Gold:
+
+- `fact_llm_costs`: costo diario y tokens por usuario.
+- `fact_agent_performance`: latencia promedio y tasa de exito.
+- `fact_evaluations`: unir runs con puntajes de evaluacion externa.
+
+### Como simular la ingesta analitica con Airflow
+
+La version inicial del DAG puede pensar en 3 pasos, aunque todavia no lo escribamos:
+
+1. Extraer.
+    - Consultar MLflow o leer el CSV.
+    - Filtrar solo runs terminados o datos relevantes.
+2. Cargar a Bronze.
+    - Escribir en Iceberg usando Spark.
+    - Mantener el schema lo mas cercano posible a la fuente.
+3. Transformar con dbt.
+    - Ejecutar Silver y Gold sobre las tablas Bronze.
+
+### Guardrails para que Spark no explote por memoria
+
+Si la prueba crece, Spark puede derramar a disco en vez de romperse. Para ese escenario conviene fijar limites desde el inicio:
+
+1. `spark.executor.memory=2g`
+    - Limita la RAM disponible por executor.
+2. `spark.memory.fraction=0.8`
+    - Reserva memoria de trabajo y deja margen para el sistema.
+3. `spark.sql.shuffle.partitions=200`
+    - Parte las transformaciones pesadas en fragmentos mas chicos.
+
+En esta fase de prueba no hace falta tunear al maximo; solo dejar documentado que el flujo real deberia usar estas defensas cuando empiece a crecer.
+
+### Estructura minima recomendada del proyecto
+
+```text
+repo/
+  airflow/
+     dags/
+        pipeline_llm_telemetry.py
+     tasks/
+        ingest_bronze.py
+  dbt/
+     dbt_project.yml
+     models/
+        bronze/
+        silver/
+        gold/
+  lakehouse/
+     bronze/
+     silver/
+     gold/
+     warehouse/
+```
+
+No hace falta crear todavia los archivos `pipeline_llm_telemetry.py`, `ingest_bronze.py` ni los modelos de dbt. La idea es dejar definida la forma del flujo para implementarlo despues con menos friccion.
+
 ## Uso desde Python (guardar y consultar)
 
 ### Opcion recomendada: PySpark con el mismo catalogo REST
@@ -567,3 +676,29 @@ silver_df.writeTo("lakehouse.silver.agent_events_clean").using("iceberg").create
 1. Es entorno local de bootstrap, no hardening productivo.
 2. No incluye HA del REST catalog ni TLS interno.
 3. No incluye Airflow/dbt aun; este frente queda listo para conectarlos en siguientes pasos.
+
+## Probar el datalake
+
+Si usamos MLflow (o el CSV de LangSmith) como fuente, así se estructurarían tus capas en el Lakehouse usando dbt:
+🥉 Capa Bronze (Datos Crudos)
+Aquí guardas los datos tal como salen de la API de MLflow o tu CSV, sin alterar nada.
+Tabla: lakehouse.bronze.raw_llm_traces
+Datos: Run ID, Start Time, Latency (ms), Status, User ID, Prompt Tokens, Completion Tokens, Tags.
+🥈 Capa Silver (Staging / Limpieza con dbt)
+Aquí usas dbt (o Spark) para limpiar la basura, parsear fechas y castear tipos de datos.
+Tabla: lakehouse.silver.stg_agent_runs
+Transformaciones: * Convertir Start Time de string a TIMESTAMP.
+Limpiar la columna Tags (que en tu CSV viene como "stress_test_v1, agent_generation") para convertirla en un array o extraer el tipo de test.
+Filtrar los registros donde Status = 'error' a una tabla de anomalías.
+🥇 Capa Gold (Negocio / Modelos Finales con dbt)
+Tablas agregadas y listas para el consumo visual.
+Tabla 1: fact_llm_costs: Agrupación diaria del Total Cost ($) y tokens por User ID.
+Tabla 2: fact_agent_performance: Latencia promedio (Latency (ms)) y tasa de éxito (Success Rate).
+Tabla 3: fact_evaluations: Si corres DeepEval de noche, cruzas el Run ID con el puntaje de Faithfulness o Answer Relevancy.
+
+Hay que usar el csv con airflow para correr una prueba en la cual primero se carga el csv con alguna modificacion minima si necesaria en bronze, simula el luego traerse o mandar los datos desde el bucket de mlflow a bronze:Ingesta Analítica (Airflow): Aquí es donde entra tu DAG. Airflow debe:
+Consultar la API/DB de MLflow para obtener los IDs de los runs terminados.
+Copiar esos datos (o transformarlos ligeramente) hacia lakehouse.bronze.llm_traces en el formato Iceberg que ya probaste.
+Ventaja: Esto te permite tener una Única Fuente de Verdad (MLflow) para debuggear, pero un Lakehouse limpio y optimizado para analítica masiva en Metabase.
+
+Que luego ademas va generar la tabla silver y gold con dbt.

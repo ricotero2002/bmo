@@ -1,0 +1,13 @@
+version: 2
+
+# TODO: declare the raw source(s) that Bronze will ingest.
+# Keep this file minimal until the input schema is stable.
+
+sources:
+  - name: bronze_source
+    # TODO: set the real database/schema and table names.
+    # database: lakehouse
+    # schema: bronze
+    tables:
+      - name: raw_llm_traces
+        description: Raw telemetry landed from CSV or MLflow.

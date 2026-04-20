@@ -130,7 +130,8 @@ Excluido:
 1. Kafka SSL fix (go/no-go).
 2. LLMFactory OpenRouter base.
 3. Lakehouse bootstrap.
-4. ELT dbt.
+    3.1 probar el lakehouse.
+4. ELT dbt. (Aca en realidad no voy a usar el chekpointer)
 5. Ingesta batch/streaming.
 6. LLMOps MLflow + evaluaciones.
 7. Reporte de ingesta.

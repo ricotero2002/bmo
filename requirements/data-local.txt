@@ -1,0 +1,20 @@
+# ============================================================
+# DATA TOOLING: entorno local separado para Airflow / dbt / MLflow
+# Usado con un venv dedicado, por ejemplo: .venv_data
+# Preferible correr en WSL2/Ubuntu si se va a usar Airflow en Windows
+# ============================================================
+
+# Core / orchestrator
+pyspark
+mlflow
+apache-airflow
+apache-airflow-providers-apache-spark
+
+# Transformations
+dbt-core
+dbt-spark[PyHive]
+
+# Helpers comunes
+pandas
+pyarrow
+sqlalchemy

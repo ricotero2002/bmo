@@ -1,0 +1,15 @@
+# Copy this file to ~/.dbt/profiles.yml and replace the placeholders.
+# Keep this file as documentation only; do not commit secrets.
+
+bmo_lakehouse:
+  target: dev
+  outputs:
+    dev:
+      # TODO: confirm the adapter profile that matches the local Spark target.
+      type: spark
+      method: thrift
+      host: localhost
+      port: 10000
+      schema: lakehouse
+      threads: 2
+      # TODO: set authentication / warehouse details once the real target is chosen.
