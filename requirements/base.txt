@@ -58,6 +58,7 @@ opentelemetry-exporter-otlp-proto-grpc==1.27.0
 opentelemetry-instrumentation-fastapi==0.48b0
 opentelemetry-instrumentation-celery==0.48b0
 opentelemetry-distro==0.48b0
+mlflow==2.14.1
 setuptools<82.0.0
 langchain-pinecone
 pinecone-client

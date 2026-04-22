@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow-tracking-server
+  namespace: personal-ai
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mlflow
+  template:
+    metadata:
+      labels:
+        app: mlflow
+    spec:
+      hostAliases:
+      - ip: "172.19.0.1"
+        hostnames:
+        - "host.k3d.internal"
+      containers:
+      - name: mlflow
+        image: ghcr.io/mlflow/mlflow:v2.11.3
+        ports:
+        - containerPort: 5000
+        env:
+        - name: AWS_ACCESS_KEY_ID
+          value: "lakehouse"
+        - name: AWS_SECRET_ACCESS_KEY
+          value: "lakehouse123"
+        - name: MLFLOW_S3_ENDPOINT_URL
+          value: "http://host.k3d.internal:9000" 
+        command: ["/bin/sh", "-c"]
+        args:
+        - >
+          pip install psycopg2-binary boto3 &&
+          mlflow server
+          --backend-store-uri=postgresql://iceberg:iceberg_secret@host.k3d.internal:5432/iceberg_catalog
+          --default-artifact-root=s3://mlflow-artifacts/
+          --static-prefix /mlflow
+          --host=0.0.0.0
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow-service
+  namespace: personal-ai
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5000
+    targetPort: 5000
+  selector:
+    app: mlflow
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mlflow-ingress
+  namespace: personal-ai
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /mlflow
+        pathType: Prefix
+        backend:
+          service:
+            name: mlflow-service
+            port:
+              number: 5000

@@ -87,7 +87,27 @@ class LLMFactory:
     @classmethod
     def _build_models_from_names(cls, model_names: list[str]):
         kwargs = cls._base_kwargs()
-        return [ChatOpenRouter(model=name, **kwargs) for name in model_names]
+        
+        # OpenRouter ahora requiere los metadatos como headers
+        headers = {
+            "HTTP-Referer": "http://localhost:8000",
+            "X-Title": "BMO Agent"
+        }
+        kwargs["default_headers"] = headers
+        
+        import os
+        from langchain_openai import ChatOpenAI
+        
+        # Usamos ChatOpenAI para esquivar el bug interno de langchain_openrouter con x_title
+        api_key = os.getenv("OPENROUTER_API_KEY")
+        return [
+            ChatOpenAI(
+                model=name, 
+                api_key=api_key, 
+                base_url="https://openrouter.ai/api/v1", 
+                **kwargs
+            ) for name in model_names
+        ]
 
     @classmethod
     def _bind_and_fallback(cls, models, tools, response_format):
@@ -105,7 +125,7 @@ class LLMFactory:
         model_with_fallbacks = primary_bound.with_fallbacks(
             fallbacks_bound
         ).with_retry(
-            stop_after_attempt=3,
+            stop_after_attempt=5,
             wait_exponential_jitter=True
         )
             
@@ -113,8 +133,20 @@ class LLMFactory:
 
     @classmethod
     def create(cls, tools = None, response_format: Optional[Type[BaseModel]] = None) -> BaseChatModel:
-        """Modelo principal de razonamiento pesado (lista HEAVY)."""
-        models = cls._build_models_from_names(cls.HEAVY_MODEL_NAMES)
+        """Modelo principal de razonamiento pesado (lista HEAVY o TOOL)."""
+        # Si requiere herramientas, usamos una lista restrictiva que soporta tools nativas en OpenRouter
+        if tools is not None:
+            tool_models = [
+                "meta-llama/llama-3.3-70b-instruct:free",
+                "qwen/qwen3-coder:free",
+                "google/gemma-3-27b-it:free",
+                "nvidia/nemotron-nano-9b-v2:free",
+                "meta-llama/llama-3.2-3b-instruct:free"
+            ]
+            models = cls._build_models_from_names(tool_models)
+        else:
+            models = cls._build_models_from_names(cls.HEAVY_MODEL_NAMES)
+            
         return cls._bind_and_fallback(models, tools, response_format)
 
     @classmethod

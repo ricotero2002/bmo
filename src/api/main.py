@@ -8,6 +8,7 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from fastapi import FastAPI
+import mlflow
 from fastapi.middleware.cors import CORSMiddleware
 from src.providers.vector_store.factory import VectorStoreFactory
 from src.providers.record_manager.factory import RecordManagerFactory
@@ -79,6 +80,26 @@ if otel_endpoint:
     metrics.set_meter_provider(metric_provider)
 
 app = FastAPI(lifespan=lifespan)
+
+# Configuración de MLflow
+# --- CONFIGURACIÓN DE OBSERVABILIDAD (MLflow) ---
+mlflow_uri = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow-service.personal-ai.svc.cluster.local:5000")
+mlflow.set_tracking_uri(mlflow_uri)
+mlflow.set_experiment("bmo_production_rag")
+
+# Autolog DEBE ir antes de cualquier invocación de LangChain
+mlflow.langchain.autolog(
+    log_models=False,
+    log_traces=True
+)
+
+# Test de conectividad al arrancar
+try:
+    with mlflow.start_run(run_name="api_startup_test"):
+        mlflow.log_param("status", "startup")
+        print(f" MLflow conectado exitosamente a {mlflow_uri}")
+except Exception as e:
+    print(f" Error conectando a MLflow: {e}")
 
 # Instrumentar FastAPI y Celery tras instanciar el app
 if otel_endpoint:

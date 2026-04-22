@@ -131,8 +131,9 @@ Excluido:
 2. LLMFactory OpenRouter base.
 3. Lakehouse bootstrap.
     3.1 probar el lakehouse. (Para esto se genero un grafo simple usando un csv). 
-4. Mlflow (solo iniciarlo y generar alguna metrica, no parte de evaluaciones).
 
+
+4. Mlflow (solo iniciarlo y generar alguna metrica, no parte de evaluaciones).
 5. ELT dbt. (Usando mlflow)
 6. Ingesta batch/streaming.
 7. LLMOps MLflow + evaluaciones.

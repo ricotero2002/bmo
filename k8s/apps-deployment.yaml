@@ -58,7 +58,7 @@ spec:
         app: api
     spec:
       hostAliases:
-      - ip: "172.21.0.1"
+      - ip: "172.19.0.1"
         hostnames:
         - "host.k3d.internal"
       containers:
@@ -101,7 +101,7 @@ spec:
         app: worker
     spec:
       hostAliases:
-      - ip: "172.21.0.1"
+      - ip: "172.19.0.1"
         hostnames:
         - "host.k3d.internal"
       containers:
@@ -139,7 +139,7 @@ spec:
     spec:
       # Mantenemos el alias para que pueda conectarse a tu RabbitMQ local
       hostAliases:
-      - ip: "172.21.0.1" 
+      - ip: "172.19.0.1" 
         hostnames:
         - "host.k3d.internal"
       containers:
