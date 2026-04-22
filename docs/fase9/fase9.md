@@ -130,13 +130,15 @@ Excluido:
 1. Kafka SSL fix (go/no-go).
 2. LLMFactory OpenRouter base.
 3. Lakehouse bootstrap.
-    3.1 probar el lakehouse.
-4. ELT dbt. (Aca en realidad no voy a usar el chekpointer)
-5. Ingesta batch/streaming.
-6. LLMOps MLflow + evaluaciones.
-7. Reporte de ingesta.
-8. Dashboards y BI.
-9. Migracion embeddings.
+    3.1 probar el lakehouse. (Para esto se genero un grafo simple usando un csv). 
+4. Mlflow (solo iniciarlo y generar alguna metrica, no parte de evaluaciones).
+
+5. ELT dbt. (Usando mlflow)
+6. Ingesta batch/streaming.
+7. LLMOps MLflow + evaluaciones.
+8. Reporte de ingesta.
+9. Dashboards y BI.
+10. Migracion embeddings.
 
 ## Notas Operativas
 

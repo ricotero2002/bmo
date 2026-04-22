@@ -1,0 +1,109 @@
+services:
+  # --- PostgreSQL para el metadato de Airflow (reemplaza SQLite) ---
+  postgres-airflow:
+    image: postgres:16-alpine
+    container_name: bmo_airflow_db
+    environment:
+      POSTGRES_DB: airflow
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow_secret
+    volumes:
+      - postgres-airflow-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  spark-thrift:
+    image: tabulario/spark-iceberg:latest
+    container_name: bmo_data_spark_thrift
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-lakehouse}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-lakehouse123}
+      AWS_REGION: us-east-1
+    entrypoint: ["/opt/spark/bin/spark-submit"]
+    command:
+      - "--class"
+      - "org.apache.spark.sql.hive.thriftserver.HiveThriftServer2"
+      - "--name"
+      - "Thrift Server"
+      - "--master"
+      - "local[*]"
+      - "--conf"
+      - "spark.sql.defaultCatalog=lakehouse"
+      - "--conf"
+      - "spark.sql.catalog.lakehouse=org.apache.iceberg.spark.SparkCatalog"
+      - "--conf"
+      - "spark.sql.catalog.lakehouse.type=rest"
+      - "--conf"
+      - "spark.sql.catalog.lakehouse.uri=http://host.docker.internal:8181"
+      - "--conf"
+      - "spark.sql.catalog.lakehouse.warehouse=s3://warehouse/"
+      - "--conf"
+      - "spark.sql.catalog.lakehouse.io-impl=org.apache.iceberg.aws.s3.S3FileIO"
+      - "--conf"
+      - "spark.sql.catalog.lakehouse.s3.endpoint=http://host.docker.internal:9000"
+      - "--conf"
+      - "spark.sql.catalog.lakehouse.s3.path-style-access=true"
+      - "--conf"
+      - "spark.sql.catalog.lakehouse.s3.access-key-id=${MINIO_ROOT_USER:-lakehouse}"
+      - "--conf"
+      - "spark.sql.catalog.lakehouse.s3.secret-access-key=${MINIO_ROOT_PASSWORD:-lakehouse123}"
+      - "--hiveconf"
+      - "hive.server2.thrift.port=10000"
+    ports:
+      - "10000:10000"
+      - "4040:4040"
+    volumes:
+      - ../:/opt/project
+    restart: unless-stopped
+
+  airflow:
+    build:
+      context: ./airflow
+      dockerfile: Dockerfile
+    container_name: bmo_data_airflow
+    depends_on:
+      postgres-airflow:
+        condition: service_healthy
+      spark-thrift:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      AIRFLOW_HOME: /opt/airflow
+      # --- LocalExecutor + PostgreSQL: permite tareas paralelas ---
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow_secret@postgres-airflow:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+      AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.session,airflow.api.auth.backend.basic_auth
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-lakehouse}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-lakehouse123}
+      LAKEHOUSE_REST_URI: http://host.docker.internal:8181
+      LAKEHOUSE_S3_ENDPOINT: http://host.docker.internal:9000
+      AWS_REGION: us-east-1
+      DBT_PROFILES_DIR: /opt/airflow/dbt
+    command: >
+      bash -lc "
+      airflow db migrate;
+      airflow users create --username admin --firstname admin --lastname admin --role Admin --email admin@example.com --password admin || true;
+      airflow webserver --port 8080 &
+      airflow scheduler
+      "
+    ports:
+      - "8085:8080"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/tasks:/opt/airflow/tasks
+      - ./dbt:/opt/airflow/dbt
+      - ../:/opt/project
+    restart: unless-stopped
+
+volumes:
+  postgres-airflow-data:

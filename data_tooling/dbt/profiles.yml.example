@@ -5,11 +5,25 @@ bmo_lakehouse:
   target: dev
   outputs:
     dev:
-      # TODO: confirm the adapter profile that matches the local Spark target.
       type: spark
       method: thrift
-      host: localhost
+      host: spark-thrift
       port: 10000
-      schema: lakehouse
+      user: dbt
+      database: lakehouse
+      schema: bronze
       threads: 2
-      # TODO: set authentication / warehouse details once the real target is chosen.
+      connect_timeout: 30
+      retry_all: true
+      retries: 1
+      session_properties:
+        spark.sql.defaultCatalog: lakehouse
+        spark.sql.catalog.lakehouse: org.apache.iceberg.spark.SparkCatalog
+        spark.sql.catalog.lakehouse.type: rest
+        spark.sql.catalog.lakehouse.uri: http://host.docker.internal:8181
+        spark.sql.catalog.lakehouse.warehouse: s3://warehouse/
+        spark.sql.catalog.lakehouse.io-impl: org.apache.iceberg.aws.s3.S3FileIO
+        spark.sql.catalog.lakehouse.s3.endpoint: http://host.docker.internal:9000
+        spark.sql.catalog.lakehouse.s3.path-style-access: true
+        spark.sql.catalog.lakehouse.s3.access-key-id: lakehouse
+        spark.sql.catalog.lakehouse.s3.secret-access-key: lakehouse123

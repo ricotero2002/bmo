@@ -17,3 +17,9 @@ src/providers/vector_store/__pycache__/factory.cpython-314.pyc
 
 .lsp/*
 .clj-kondo/
+# dbt artifacts
+data_tooling/dbt/target/
+data_tooling/dbt/dbt_packages/
+data_tooling/dbt/logs/
+data_tooling/dbt/.user.yml
+data_tooling/dbt/profiles.yml

@@ -9,7 +9,18 @@ services:
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-lakehouse}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-lakehouse123}
       AWS_REGION: us-east-1
+      JAVA_TOOL_OPTIONS: "-Djava.net.preferIPv4Stack=true"
+      # Configuración de Spark para Iceberg (Thrift Server)
+      SPARK_CONF_spark_sql_catalog_lakehouse: org.apache.iceberg.spark.SparkCatalog
+      SPARK_CONF_spark_sql_catalog_lakehouse_type: rest
+      SPARK_CONF_spark_sql_catalog_lakehouse_uri: http://rest:8181
+      SPARK_CONF_spark_sql_catalog_lakehouse_warehouse: s3://warehouse/
+      SPARK_CONF_spark_sql_catalog_lakehouse_io_impl: org.apache.iceberg.aws.s3.S3FileIO
+      SPARK_CONF_spark_sql_catalog_lakehouse_s3_endpoint: http://minio:9000
+      SPARK_CONF_spark_sql_catalog_lakehouse_s3_path_style_access: "true"
+      SPARK_CONF_spark_sql_defaultCatalog: lakehouse
     volumes:
+      - ./spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
       - ../lakehouse/warehouse:/home/iceberg/warehouse
       - ../lakehouse/notebooks:/home/iceberg/notebooks/notebooks
     ports:
@@ -26,10 +37,18 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-lakehouse}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-lakehouse123}
+      MINIO_DOMAIN: minio:9000
     command: server /data --console-address ":9001"
     volumes:
       - minio-data:/data
     restart: unless-stopped
+    networks:
+      default:
+        aliases:
+          - warehouse.minio
+          - bronze.minio
+          - silver.minio
+          - gold.minio
 
   minio-init:
     image: minio/mc:RELEASE.2025-01-17T23-25-50Z
@@ -46,37 +65,85 @@ services:
       until mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD; do
         i=$$((i+1));
         if [ $$i -ge 30 ]; then
-          echo 'MinIO no estuvo disponible luego de 30 intentos';
           exit 1;
         fi;
-        echo 'Esperando MinIO... intento' $$i;
         sleep 2;
       done;
       mc mb -p local/bronze;
       mc mb -p local/silver;
       mc mb -p local/gold;
       mc mb -p local/warehouse;
-      echo 'Buckets bronze/silver/gold/warehouse creados';
       "
     restart: "no"
+
+  postgres-catalog:
+    image: postgres:16-alpine
+    container_name: bmo_catalog_db
+    environment:
+      POSTGRES_DB: iceberg_catalog
+      POSTGRES_USER: iceberg
+      POSTGRES_PASSWORD: iceberg_secret
+    volumes:
+      - postgres-catalog-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iceberg -d iceberg_catalog"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
 
   rest:
     image: tabulario/iceberg-rest:latest
     container_name: bmo_lakehouse_rest
     depends_on:
-      - minio
+      postgres-catalog:
+        condition: service_healthy
+      minio:
+        condition: service_started
     environment:
-      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-lakehouse}
-      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-lakehouse123}
-      AWS_REGION: us-east-1
-      CATALOG_WAREHOUSE: s3://warehouse/
-      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
+      # Credenciales
+      CATALOG_S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-lakehouse}
+      CATALOG_S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-lakehouse123}
       CATALOG_S3_ENDPOINT: http://minio:9000
       CATALOG_S3_PATH_STYLE_ACCESS: "true"
       CATALOG_S3_PATH__STYLE__ACCESS: "true"
+      JAVA_TOOL_OPTIONS: "-Ds3.path-style-access=true"
+      CATALOG_S3_REMOTE_SIGNING_ENABLED: "false"
+      CATALOG_S3_REGION: us-east-1
+      CATALOG_WAREHOUSE: s3://warehouse/
+      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
+      # Backend JDBC
+      CATALOG_CATALOG__IMPL: org.apache.iceberg.jdbc.JdbcCatalog
+      CATALOG_URI: jdbc:postgresql://postgres-catalog:5432/iceberg_catalog
+      CATALOG_JDBC_USER: iceberg
+      CATALOG_JDBC_PASSWORD: iceberg_secret
+      CATALOG_JDBC_INITIALIZE: "true"
+      # IMPORTANT: Disable AWS Metadata lookup to prevent UnknownHostException
+      AWS_EC2_METADATA_DISABLED: "true"
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-lakehouse}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-lakehouse123}
+      AWS_REGION: us-east-1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8181:8181"
     restart: unless-stopped
 
+  superset:
+    image: apache/superset:4.1.1
+    container_name: bmo_lakehouse_superset
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-superset_dev_secret_change_in_prod}
+      SUPERSET_LOAD_EXAMPLES: "no"
+    ports:
+      - "8088:8088"
+    volumes:
+      - superset-data:/app/superset_home
+    command: >
+      /bin/sh -c "sleep 10 && pip install --quiet PyHive thrift thrift-sasl && superset db upgrade && superset fab create-admin --username admin --firstname Admin --lastname Lakehouse --email admin@bmo.com --password admin || true && superset init && superset run -h 0.0.0.0 -p 8088"
+    restart: unless-stopped
+
 volumes:
   minio-data:
+  postgres-catalog-data:
+  superset-data:

@@ -8,12 +8,11 @@ profile: bmo_lakehouse
 model-paths:
   - models
 
-# TODO: define model configs by layer.
-# models:
-#   bmo_lakehouse_dbt:
-#     bronze:
-#       +materialized: table
-#     silver:
-#       +materialized: view
-#     gold:
-#       +materialized: table
+models:
+  bmo_lakehouse_dbt:
+    bronze:
+      +materialized: table
+    silver:
+      +materialized: table
+    gold:
+      +materialized: table

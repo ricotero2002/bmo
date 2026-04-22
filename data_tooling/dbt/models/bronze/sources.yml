@@ -1,13 +1,45 @@
 version: 2
 
-# TODO: declare the raw source(s) that Bronze will ingest.
-# Keep this file minimal until the input schema is stable.
-
 sources:
-  - name: bronze_source
-    # TODO: set the real database/schema and table names.
-    # database: lakehouse
-    # schema: bronze
+  - name: lakehouse_bronze
+    description: "Capa cruda (Raw) almacenada en formato Iceberg en MinIO."
+    schema: bronze
     tables:
       - name: raw_llm_traces
-        description: Raw telemetry landed from CSV or MLflow.
+        description: "Telemetría cruda ingerida desde el CSV de LangSmith o MLflow."
+        tests:
+          - dbt_utils.expression_is_true:
+              expression: "total_tokens >= 0"
+              config:
+                severity: warn
+          - dbt_utils.expression_is_true:
+              expression: "latency_ms >= 0"
+              config:
+                severity: warn
+        columns:
+          - name: run_id
+            description: "ID único de la ejecución"
+            tests:
+              - unique
+              - not_null
+          - name: start_time
+            description: "Timestamp de inicio de la ejecución"
+            tests:
+              - not_null
+          - name: status
+            description: "Estado de ejecución"
+            tests:
+              - not_null
+              - accepted_values:
+                  values: ["success", "error"]
+                  quote: true
+                  config:
+                    severity: warn
+          - name: total_tokens
+            description: "Tokens totales reportados por ejecución"
+            tests:
+              - not_null
+          - name: total_cost_usd
+            description: "Costo total en USD"
+            tests:
+              - not_null

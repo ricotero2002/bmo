@@ -38,6 +38,93 @@ Time Travel: Como Iceberg guarda el historial de qué archivos componían la tab
 
 Optimización de Búsqueda: Iceberg guarda estadísticas (mínimos y máximos) de cada archivo. Si haces SELECT * WHERE fecha = 'hoy', Iceberg sabe exactamente qué archivos Parquet en MinIO ignorar sin tener que abrirlos, reduciendo tiempos de escaneo de horas a milisegundos.
 
+1. El Catálogo (Catalog)
+Qué es: Es el "Índice principal" o el "Registro de la propiedad". El Catálogo no guarda los datos físicos ni los archivos Parquet; su único trabajo es saber dónde está la última versión (snapshot) de cada tabla.
+
+Por qué es vital: Si dos procesos de Spark intentan hacer un INSERT al mismo tiempo en la misma tabla, el Catálogo actúa como el árbitro. Permite que uno escriba y hace que el otro espere o reintente, evitando que tus datos se corrompan.
+
+En Spark: Cuando configuras --conf spark.sql.catalog.lakehouse=org.apache.iceberg.spark.SparkCatalog, le estás diciendo a Spark: "He creado un catálogo de Iceberg y lo he bautizado como lakehouse".
+
+Tu implementación: En la arquitectura moderna, usaste un REST Catalog. Esto significa que cuando Spark quiere saber dónde está una tabla, no busca a ciegas en el almacenamiento, sino que le hace una petición HTTP GET a tu servicio REST, y este le responde con la ruta exacta en MinIO.
+
+2. El Espacio de Nombres (Namespace)
+Qué es: Es una agrupación lógica de tablas. Si vienes del mundo de las bases de datos relacionales (como PostgreSQL o MySQL), un Namespace es exactamente lo mismo que un "Schema" o una "Database".
+
+Por qué es vital: Sirve para organizar tus datos por dominios de negocio, capas de madurez o equipos, aplicando reglas de acceso o cuotas a nivel de grupo.
+
+Tu implementación: Cuando ejecutas CREATE NAMESPACE IF NOT EXISTS lakehouse.bronze;, estás creando una "carpeta lógica" llamada bronze dentro del catálogo lakehouse. Al tener bronze, silver y gold, estás usando los Namespaces para separar la calidad y el refinamiento de tus datos.
+
+3. La Tabla (Table)
+Qué es: Es la entidad final que contiene el esquema (nombres de columnas y tipos de datos) y la historia completa de los registros.
+
+Por qué es vital en Iceberg: A diferencia de una base de datos normal, una tabla Iceberg es en realidad un "árbol" de archivos físicos en tu almacenamiento (MinIO). Cuando creas una tabla, Iceberg genera:
+
+Archivos de Datos: Los verdaderos archivos .parquet con la información.
+
+Archivos Manifest: Archivos que hacen un inventario de qué archivos Parquet pertenecen a qué partición.
+
+Archivos de Metadata: Archivos .json que guardan el esquema de la tabla y la historia de todas las modificaciones (snapshots).
+
+Tu implementación: agent_events o llm_telemetry son tus tablas. Contienen la definición de qué columnas existen (ej. run_id, latency_ms) y apuntan a los archivos físicos en tu bucket de MinIO.
+
+
+Para responderte directamente: Tal como está configurado tu Spark en este momento, no estás usando los buckets bronze, silver ni gold de MinIO para tus tablas Iceberg. Todo está yendo a parar al bucket warehouse.
+
+Vamos a desglosar por qué pasa esto, cómo se conectan los conceptos y qué deberías hacer con esos buckets extra.
+
+La Configuración Clave: El warehouse
+En tu script de PySpark (y en tu docker-compose), le pasaste esta configuración a Spark:
+--conf spark.sql.catalog.lakehouse.warehouse=s3://warehouse/
+
+Esa línea es la regla maestra. Le dice a Iceberg: "Absolutamente todo lo que yo cree en el catálogo lakehouse debe vivir físicamente dentro del bucket de MinIO llamado warehouse".
+
+Por lo tanto, la traducción de Iceberg a MinIO funciona así:
+
+Catálogo (lakehouse) -> Apunta al bucket raíz: s3://warehouse/
+
+Namespace (bronze) -> Iceberg crea una carpeta dentro del bucket: s3://warehouse/bronze/
+
+Tabla (llm_telemetry) -> Iceberg crea una subcarpeta: s3://warehouse/bronze/llm_telemetry/
+
+Archivos Físicos -> Dentro de esa subcarpeta, Iceberg crea las carpetas /data (para tus .parquet) y /metadata (para tus .json).
+
+Entonces, ¿para qué creaste los buckets bronze, silver y gold en MinIO?
+Esto nos lleva a las dos arquitecturas estándar de la industria. Tú creaste la infraestructura para la Arquitectura 2, pero configuraste Spark para la Arquitectura 1.
+
+Arquitectura 1: Un solo bucket ("El Data Lake Unitario") - Lo que tienes ahora
+Todo vive en el bucket warehouse.
+
+Las capas (bronze, silver) son simplemente carpetas (namespaces en Iceberg) dentro de ese bucket.
+
+Ventaja: Es muchísimo más fácil de gestionar, respaldar (backups) y configurar permisos, ya que solo te preocupas de un bucket.
+
+Arquitectura 2: "Un Bucket por Capa" - Para lo que creaste los buckets
+En esta arquitectura, quieres que la tabla lakehouse.bronze.datos se guarde en el bucket s3://bronze/, y la tabla lakehouse.silver.datos en s3://silver/.
+
+Para lograr esto en Iceberg, no usas una regla global warehouse. En su lugar, cuando creas el namespace con SQL, le dices explícitamente a dónde apuntar:
+
+SQL
+CREATE NAMESPACE lakehouse.bronze LOCATION 's3://bronze/';
+CREATE NAMESPACE lakehouse.silver LOCATION 's3://silver/';
+¿Qué te recomiendo hacer? (La mejor práctica)
+Quédate con la Arquitectura 1 (Todo en warehouse). Es el estándar moderno porque AWS S3 y MinIO manejan millones de carpetas dentro de un solo bucket sin problemas de rendimiento.
+
+Pero entonces, ¿qué haces con los buckets bronze, silver y gold vacíos que creaste en tu script mc mb?
+
+Úsalos como Landing Zones (Zonas de aterrizaje).
+
+Iceberg es un formato estructurado. No puedes simplemente "arrastrar y soltar" un CSV crudo dentro de una tabla Iceberg. Necesitas un lugar físico donde dejar la basura cruda antes de que Spark la lea.
+
+El Flujo Perfecto:
+
+Airflow (o tú a mano): Descarga el langsmith_metrics_export.csv y lo sube físicamente al bucket s3://bronze/archivos_crudos/. (Esto es un simple archivo, no es Iceberg).
+
+Spark: Lee el CSV usando spark.read.csv("s3a://bronze/archivos_crudos/langsmith.csv").
+
+Spark: Limpia el archivo y lo guarda en Iceberg usando df.writeTo("lakehouse.bronze.llm_telemetry")....
+
+MinIO: Iceberg guarda los archivos resultantes .parquet dentro del bucket s3://warehouse/bronze/llm_telemetry/.
+
 ### Apache Spark
 
 Spark es el "trabajador" de esta arquitectura. No almacena datos de forma persistente; su único trabajo es conectarse al almacenamiento, subir los datos a la memoria RAM, procesarlos en paralelo y escupirlos de nuevo.
@@ -702,3 +789,4 @@ Copiar esos datos (o transformarlos ligeramente) hacia lakehouse.bronze.llm_trac
 Ventaja: Esto te permite tener una Única Fuente de Verdad (MLflow) para debuggear, pero un Lakehouse limpio y optimizado para analítica masiva en Metabase.
 
 Que luego ademas va generar la tabla silver y gold con dbt.
+
