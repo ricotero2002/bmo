@@ -131,12 +131,14 @@ Excluido:
 2. LLMFactory OpenRouter base.
 3. Lakehouse bootstrap.
     3.1 probar el lakehouse. (Para esto se genero un grafo simple usando un csv). 
+4. Mlflow (solo iniciarlo y generar alguna metrica, no parte de evaluaciones). (No se uso finalmente)
+5. ELT dbt. (Usando langsmith)
+6. Evaluaciones en dag.
+
+Tengo que chequear/modificar spark_silver (tengo que hacer como ingest bronze, ademas quizas es mejor usar dbt y pasar los de langsmith a bronze primero), entonces tambie nver extract_langsmith. Aparte tengo que ver spark_evaluator y el pipileine_llm_telemetry en general.
 
 
-4. Mlflow (solo iniciarlo y generar alguna metrica, no parte de evaluaciones).
-5. ELT dbt. (Usando mlflow)
-6. Ingesta batch/streaming.
-7. LLMOps MLflow + evaluaciones.
+7. Ingesta batch/streaming.
 8. Reporte de ingesta.
 9. Dashboards y BI.
 10. Migracion embeddings.
