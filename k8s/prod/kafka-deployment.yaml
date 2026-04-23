@@ -16,6 +16,13 @@ spec:
       labels:
         app: kafka-consumer
     spec:
+      hostAliases:
+      - ip: "172.19.0.1"
+        hostnames:
+        - "host.k3d.internal"
+      - ip: "172.30.16.1"
+        hostnames:
+        - "ollama.host.internal"
       dnsConfig:
         options:
           - name: ndots

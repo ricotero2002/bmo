@@ -433,9 +433,9 @@ kubectl create secret generic infisical-auth-secret `
   --namespace personal-ai
 
 # 4. Secreto de Grafana Cloud para OpenTelemetry
-kubectl create secret generic grafana-otel-secret `
-  --from-literal=endpoint="https://otlp-gateway-prod-us-east-0.grafana.net/otlp" `
-  --from-literal=auth="Basic TU_TOKEN_BASE64" `
+kubectl create secret generic app-secrets `
+  --from-literal=GRAFANA_USERNAME="<TU_INSTANCE_ID>" `
+  --from-literal=GRAFANA_TOKEN="<TU_TOKEN_DE_GRAFANA_CLOUD>" `
   --namespace observability
 ```
 

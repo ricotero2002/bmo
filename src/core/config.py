@@ -48,11 +48,13 @@ class Settings(BaseSettings):
     # AI Services
     OPENAI_API_KEY: str = ""
     GOOGLE_API_KEY: str = ""
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
     
     # Monitoring
     LANGSMITH_API_KEY: str = ""
     LANGCHAIN_TRACING_V2: str = "false"
     LANGSMITH_PROJECT: str = "default"
+    MLFLOW_TRACKING_URI: str = "http://localhost:5000"
     
     # External APIs
     OPENWEATHERMAP_API_KEY: str = ""

@@ -1,11 +1,11 @@
 import logging
+import os
 from datetime import date
 from typing import Literal
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage, RemoveMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import RetryPolicy, Command
 from langgraph.prebuilt import ToolNode
-
 from src.schemas.graph_state import GraphState, GradeDocuments, GradeHallucinations, GradeCompletion, TaskPlan, TaskStep
 from src.service.prompt_loader import PromptLoader
 from src.tools.metadata_filter import TOOL_ERROR_PREFIX
@@ -143,7 +143,7 @@ class AgentService:
             logger.warning(f"Task planner failed: {e}. Proceeding without a plan.")
             return {"task_plan": []}
 
-    def _agent_router(self, state: GraphState) -> Command:
+    async def _agent_router(self, state: GraphState) -> Command:
         messages = state["messages"]
         last_message = messages[-1]
 
@@ -217,7 +217,7 @@ class AgentService:
         # Si la conversación es muy larga, la resumimos
         return Command(goto="cleanup_rag_memory")
 
-    def _route_after_tools(self, state: GraphState) -> str:
+    async def _route_after_tools(self, state: GraphState) -> str:
         """Enruta los mensajes dependiendo de qué herramienta se acaba de ejecutar."""
         messages = state["messages"]
         
@@ -239,7 +239,7 @@ class AgentService:
         # No hay documentos que evaluar, volvemos al agente para que genere la respuesta final.
         return "agent"
 
-    def _tools_router(self, state: GraphState) -> str:
+    async def _tools_router(self, state: GraphState) -> str:
         """Helper para retrocompatiblidad si se llama desde otros puntos, redirige a _route_after_tools."""
         return self._route_after_tools(state)
 
@@ -331,7 +331,7 @@ class AgentService:
                 }
             )
 
-    def _grade_docs_router(self, state: GraphState) -> str:
+    async def _grade_docs_router(self, state: GraphState) -> str:
         count = state.get("retrieve_retry_count", 0)
         # Primera falla (count=1): reescribir la query y darle una oportunidad más al agente
         # Si count=0 (éxito) o count>=MAX_RETRIES (agotado, ya manejado con Command desde _grade_documents)
@@ -426,7 +426,7 @@ class AgentService:
 
         return update_state
 
-    def _grade_hallucinations_router(self, state: GraphState) -> str:
+    async def _grade_hallucinations_router(self, state: GraphState) -> str:
         last_msg = state["messages"][-1]
         # Si el último mensaje es el feedback de alucinaciones, volver al agente
         if isinstance(last_msg, HumanMessage) and "alucinaciones" in last_msg.content:
@@ -537,7 +537,7 @@ class AgentService:
 
         return {"messages": [], "task_plan": task_plan}
 
-    def _grade_task_completion_router(self, state: GraphState) -> str:
+    async def _grade_task_completion_router(self, state: GraphState) -> str:
         last_msg = state["messages"][-1]
         # Si el supervisor inyectó una instrucción del sistema como HumanMessage, volvemos al agente
         if isinstance(last_msg, HumanMessage) and "[SISTEMA]: Aún no has completado" in last_msg.content:
@@ -675,27 +675,6 @@ class AgentService:
                 "run_summaries": None # Resetea la lista usando el reductor custom
             }
 
-            history_str = "\n".join([f"{m.type}: {m.content}" for m in history_to_collapse])
-            previous_summary = state.get("summary", "")
-
-            # 2. Generar el nuevo resumen consolidado
-            prompt = self.prompt_loader.get_prompt(
-                "summarize_global.jinja2",
-                version=state.get("prompt_version", "rag_v4"),
-                previous_summary=previous_summary,
-                history_str=history_str
-            )
-            
-            response = await self.model.ainvoke([HumanMessage(content=prompt)])
-            new_global_summary = response.content
-            
-            # Pruning: Eliminar los mensajes procesados
-            delete_messages = [RemoveMessage(id=m.id) for m in history_to_collapse if hasattr(m, "id") and m.id]
-            
-            return {
-                "summary": new_global_summary,
-                "messages": delete_messages
-            }
         except Exception as e:
             logger.warning(f"Global summarization failed: {e}")
             return {}
@@ -748,7 +727,7 @@ class AgentService:
                 "user_id": user_id,
             },
             "tags": tags,
-            "metadata": metadata
+            "metadata": metadata,
         }
 
         input_message = {
@@ -759,10 +738,11 @@ class AgentService:
             "generate_retry_count": 0,
             "docs_parse_retries": 0,
             "hallucinations_parse_retries": 0,
-            "task_plan": None,  # Se genera en el nodo task_planner al inicio de cada turno
+            "task_plan": None,
         }
 
         return await self.graph.ainvoke(input_message, config=config)
+
 
     async def astream_chat(self, message: str, thread_id: str, user_info: dict, prompt_version: str):
         """
@@ -783,7 +763,7 @@ class AgentService:
                 "user_id": user_id,
             },
             "tags": tags,
-            "metadata": metadata
+            "metadata": metadata,
         }
 
         input_message = {
@@ -794,7 +774,7 @@ class AgentService:
             "generate_retry_count": 0,
             "docs_parse_retries": 0,
             "hallucinations_parse_retries": 0,
-            "task_plan": None,  # Se genera en el nodo task_planner al inicio de cada turno
+            "task_plan": None,
         }
 
         # version="v2" es el estándar actual recomendado por LangChain para eventos

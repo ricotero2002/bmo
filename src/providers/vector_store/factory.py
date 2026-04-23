@@ -1,7 +1,5 @@
 import os
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from src.providers.vector_store.chroma_provider import ChromaProvider
-from src.providers.vector_store.pinecone_provider import PineconeProvider
 
 
 class VectorStoreFactory:
@@ -18,16 +16,20 @@ class VectorStoreFactory:
         embeddings = VectorStoreFactory.get_embeddings()
 
         if env == "production":
+            from src.providers.vector_store.pinecone_provider import PineconeProvider
+
             # Producción: Pinecone Starter (Always Free)
             return PineconeProvider(
                 embeddings=embeddings,
                 index_name=os.getenv("PINECONE_INDEX_NAME", "bmo-documents"),
             )
+        else:
+            # Default: desarrollo local (ChromaDB en Docker)
+            from src.providers.vector_store.chroma_provider import ChromaProvider
 
-        # Default: desarrollo local (ChromaDB en Docker)
-        return ChromaProvider(
-            host=os.getenv("CHROMA_HOST", "localhost"),
-            port=int(os.getenv("CHROMA_PORT", 8000)),
-            embeddings=embeddings,
-            collection_name=os.getenv("COLLECTION_NAME", "example_collection"),
-        )
+            return ChromaProvider(
+                host=os.getenv("CHROMA_HOST", "localhost"),
+                port=int(os.getenv("CHROMA_PORT", 8000)),
+                embeddings=embeddings,
+                collection_name=os.getenv("COLLECTION_NAME", "example_collection"),
+            )

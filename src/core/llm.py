@@ -1,6 +1,7 @@
 from typing import Optional, Type
 from pydantic import BaseModel
 from langchain_openrouter import ChatOpenRouter
+from langchain_ollama import ChatOllama
 from langchain_core.language_models.chat_models import BaseChatModel
 
 
@@ -9,6 +10,7 @@ class LLMFactory:
 
     HEAVY_MODEL_NAMES = [
         "nousresearch/hermes-3-llama-3.1-405b:free",
+        "ollama/llama_1b_gpu",
         "meta-llama/llama-3.3-70b-instruct:free",
         "qwen/qwen3-next-80b-a3b-instruct:free",
         "openai/gpt-oss-120b:free",
@@ -34,6 +36,7 @@ class LLMFactory:
 
     LITE_MODEL_NAMES = [
         "meta-llama/llama-3.2-3b-instruct:free",
+        "ollama/qwen_force_gpu",
         "google/gemma-3-4b-it:free",
         "nvidia/nemotron-nano-9b-v2:free",
         "google/gemma-3n-e4b-it:free",
@@ -64,12 +67,8 @@ class LLMFactory:
 
     @classmethod
     def _base_kwargs(cls) -> dict:
-        from src.core.telemetry import TelemetryCallbackHandler
-
-        callbacks = [TelemetryCallbackHandler()]
         return {
             "temperature": 0,
-            "callbacks": callbacks,
             "model_kwargs": {"stream_options": {"include_usage": True}},
         }
 
@@ -87,27 +86,37 @@ class LLMFactory:
     @classmethod
     def _build_models_from_names(cls, model_names: list[str]):
         kwargs = cls._base_kwargs()
-        
-        # OpenRouter ahora requiere los metadatos como headers
-        headers = {
-            "HTTP-Referer": "http://localhost:8000",
-            "X-Title": "BMO Agent"
-        }
-        kwargs["default_headers"] = headers
-        
-        import os
-        from langchain_openai import ChatOpenAI
-        
-        # Usamos ChatOpenAI para esquivar el bug interno de langchain_openrouter con x_title
-        api_key = os.getenv("OPENROUTER_API_KEY")
-        return [
-            ChatOpenAI(
-                model=name, 
-                api_key=api_key, 
-                base_url="https://openrouter.ai/api/v1", 
-                **kwargs
-            ) for name in model_names
-        ]
+        models = []
+        for name in model_names:
+            if name.startswith("ollama/"):
+                from src.core.config import settings
+                real_name = name.replace("ollama/", "")
+                models.append(ChatOllama(
+                    model=real_name, 
+                    base_url=settings.OLLAMA_BASE_URL,
+                    temperature=kwargs.get("temperature", 0.0),
+                    num_ctx=1024,
+                    num_gpu=99
+                ))
+            else:
+                import os
+                from langchain_openai import ChatOpenAI
+                
+                clean_kwargs = kwargs.copy()
+                clean_kwargs["default_headers"] = {
+                    "HTTP-Referer": "http://localhost:8000",
+                    "X-Title": "BMO Agent"
+                }
+                
+                api_key = os.getenv("OPENROUTER_API_KEY")
+                models.append(ChatOpenAI(
+                    model=name, 
+                    api_key=api_key, 
+                    base_url="https://openrouter.ai/api/v1", 
+                    **clean_kwargs
+                ))
+                
+        return models
 
     @classmethod
     def _bind_and_fallback(cls, models, tools, response_format):
@@ -138,6 +147,7 @@ class LLMFactory:
         if tools is not None:
             tool_models = [
                 "meta-llama/llama-3.3-70b-instruct:free",
+                "ollama/llama_1b_gpu",
                 "qwen/qwen3-coder:free",
                 "google/gemma-3-27b-it:free",
                 "nvidia/nemotron-nano-9b-v2:free",

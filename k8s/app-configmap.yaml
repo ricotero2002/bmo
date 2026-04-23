@@ -20,10 +20,19 @@ data:
   KAFKA_MESSAGE_MAX_BYTES: "104857600"
   COLLECTION_NAME: "example_collection"
   LANGSMITH_PROJECT: "BMO"
+  OLLAMA_BASE_URL: "http://host.k3d.internal:11434"
   
   # --- OpenTelemetry ---
   OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector-opentelemetry-collector.observability.svc.cluster.local:4317"
   OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
   OTEL_RESOURCE_ATTRIBUTES: "service.namespace=personal-ai,deployment.environment=dev"
-  LANGCHAIN_TRACING_V2: "true"
+  LANGCHAIN_TRACING_V2: "false"
+  MLFLOW_USE_DEFAULT_TRACER_PROVIDER: "true"
+  MLFLOW_ENABLE_LANGCHAIN_TRACING: "true"
+  MLFLOW_TRACING_OMIT_METADATA: "true"
+  MLFLOW_S3_ENDPOINT_URL: "http://host.k3d.internal:9000"
+  AWS_ACCESS_KEY_ID: "lakehouse"
+  AWS_SECRET_ACCESS_KEY: "lakehouse123"
+  AWS_DEFAULT_REGION: "us-east-1"
+  AWS_EC2_METADATA_DISABLED: "true"
 

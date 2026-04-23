@@ -306,10 +306,10 @@ async def ask_agent(
         # Inyectar el flag de stress test si el header está presente
         if x_stress_test:
             user_context["is_stress_test"] = True
-            
+
         async with llm_semaphore:
             result = await agent_service.chat(
-                message=request.message, 
+                message=request.message,
                 thread_id=thread_id,
                 user_info=user_context,
                 prompt_version=request.prompt_version
@@ -395,47 +395,47 @@ async def ask_agent_stream(
             # Solo avanzará si hay menos de 10 peticiones procesándose en este worker.
             async with llm_semaphore:
                 async for event in agent_service.astream_chat(
-                    message=request.message, 
+                    message=request.message,
                     thread_id=thread_id,
                     user_info=user_context,
                     prompt_version=request.prompt_version
                 ):
                     kind = event["event"]
                     tags = event.get("tags", [])
-                    
+
                     if kind == "on_chat_model_start" and "agent_generation" in tags:
                         # Protección contra errores de tipo en la persistencia
                         current_response = "".join(str(item) for item in full_response_text)
                         if current_response.strip():
                             yield f"data: {json.dumps({'type': 'status', 'content': 'Corrigiendo imprecisiones detectadas...'})}\n\n"
                         full_response_text.clear()
-                        
+
                     # --- FIX: CAPTURA DEL PLAN DE EJECUCIÓN ---
                     elif kind == "on_chain_end" and event.get("name") == "task_planner":
                         output = event.get("data", {}).get("output", {})
                         if isinstance(output, dict) and "task_plan" in output:
                             yield f"data: {json.dumps({'type': 'plan', 'data': output['task_plan']})}\n\n"
-                            
+
                     elif kind == "on_chat_model_stream" and "agent_generation" in tags:
                         content = event["data"]["chunk"].content
                         if content:
                             # Aseguramos que content sea string (puede ser lista en modelos multimodales/v2)
                             if isinstance(content, list):
                                 content = "".join(str(c.get("text", c)) if isinstance(c, dict) else str(c) for c in content)
-                            
+
                             full_response_text.append(str(content))
                             yield f"data: {json.dumps({'type': 'token', 'content': str(content)})}\n\n"
-                    
+
                     # --- FIX: CAPTURA DE INPUTS DE LA HERRAMIENTA (Para Status detallado) ---
                     elif kind == "on_tool_start":
                         tool_name = event["name"]
                         tool_input = event.get("data", {}).get("input", {})
                         yield f"data: {json.dumps({'type': 'tool-start', 'data': tool_name, 'input': tool_input})}\n\n"
-    
+
                     elif kind == "on_tool_end":
                         tool_name = event["name"]
                         yield f"data: {json.dumps({'type': 'tool-end', 'data': tool_name})}\n\n"
-                    
+
                     elif kind == "on_chain_start":
                         node_name = event.get("name")
                         if node_name == "grade_documents":

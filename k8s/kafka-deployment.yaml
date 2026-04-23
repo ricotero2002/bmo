@@ -15,7 +15,7 @@ spec:
         app: kafka-consumer
     spec:
       hostAliases:
-      - ip: "172.21.0.1"
+      - ip: "172.19.0.1"
         hostnames:
         - "host.k3d.internal"
       containers:

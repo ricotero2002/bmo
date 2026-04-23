@@ -3,12 +3,18 @@ import os
 import sys
 import asyncio
 
+# =========================================================================
+# 1. VARIABLES DE ENTORNO CRÍTICAS
+# =========================================================================
+# Redirige todo el tráfico local de Ollama hacia el anfitrión Windows
+os.environ.setdefault("OLLAMA_HOST", "http://ollama.host.internal:11434")
+os.environ.setdefault("GIT_PYTHON_REFRESH", "quiet")  # Silencia warning de git en contenedor
+
 # Configuración necesaria para psycopg3 en Windows antes de cualquier operación asíncrona
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from fastapi import FastAPI
-import mlflow
 from fastapi.middleware.cors import CORSMiddleware
 from src.providers.vector_store.factory import VectorStoreFactory
 from src.providers.record_manager.factory import RecordManagerFactory
@@ -24,18 +30,18 @@ from src.providers.storage.factory import StorageFactory
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from prometheus_fastapi_instrumentator import Instrumentator
-import os
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Inicializamos el cliente (Chroma o AWS OpenSearch)
+    # Startup: Inicializamos recursos.
+    
     provider = VectorStoreFactory.get_provider()
     app.state.vector_store = provider.getVectorStore()
     app.state.record_manager = RecordManagerFactory.get_manager()
@@ -65,57 +71,39 @@ async def lifespan(app: FastAPI):
         # Shutdown: cerramos el pool del checkpointer
         await CheckpointerFactory.close_pool()
 
-# Configuración de OpenTelemetry (Solo si se provee el endpoint)
+# Configuración de OpenTelemetry para Grafana
 otel_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 if otel_endpoint:
-    # 1. Configurar Trazas
+    # 1. Configurar Trazas (HTTP, puerto 4318)
     provider = TracerProvider()
-    processor = BatchSpanProcessor(OTLPSpanExporter(endpoint=otel_endpoint, insecure=True))
+    processor = BatchSpanProcessor(OTLPSpanExporter(endpoint=f"{otel_endpoint}/v1/traces"))
     provider.add_span_processor(processor)
-    trace.set_tracer_provider(provider)
 
-    # 2. Configurar Métricas
-    metric_reader = PeriodicExportingMetricReader(OTLPMetricExporter(endpoint=otel_endpoint, insecure=True))
+    # 2. Configurar Métricas (HTTP, puerto 4318)
+    metric_reader = PeriodicExportingMetricReader(OTLPMetricExporter(endpoint=f"{otel_endpoint}/v1/metrics"))
     metric_provider = MeterProvider(metric_readers=[metric_reader])
-    metrics.set_meter_provider(metric_provider)
 
 app = FastAPI(lifespan=lifespan)
 
-# Configuración de MLflow
-# --- CONFIGURACIÓN DE OBSERVABILIDAD (MLflow) ---
-mlflow_uri = os.getenv("MLFLOW_TRACKING_URI", "http://mlflow-service.personal-ai.svc.cluster.local:5000")
-mlflow.set_tracking_uri(mlflow_uri)
-mlflow.set_experiment("bmo_production_rag")
-
-# Autolog DEBE ir antes de cualquier invocación de LangChain
-mlflow.langchain.autolog(
-    log_models=False,
-    log_traces=True
-)
-
-# Test de conectividad al arrancar
-try:
-    with mlflow.start_run(run_name="api_startup_test"):
-        mlflow.log_param("status", "startup")
-        print(f" MLflow conectado exitosamente a {mlflow_uri}")
-except Exception as e:
-    print(f" Error conectando a MLflow: {e}")
-
-# Instrumentar FastAPI y Celery tras instanciar el app
+# Instrumentar FastAPI y Celery
 if otel_endpoint:
     from opentelemetry.instrumentation.celery import CeleryInstrumentor
-    FastAPIInstrumentor.instrument_app(app)
-    CeleryInstrumentor().instrument()  # Sella los mensajes hacia Celery con el Trace ID
+    FastAPIInstrumentor.instrument_app(
+        app,
+        tracer_provider=provider,
+        meter_provider=metric_provider,
+    )
+    CeleryInstrumentor().instrument(tracer_provider=provider)
 
 # 3. Métricas para Prometheus (Endpoint /metrics)
 Instrumentator().instrument(app).expose(app)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Permite peticiones desde cualquier origen (ideal para desarrollo local)
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Permite todos los métodos (POST, GET, y crucialmente OPTIONS)
-    allow_headers=["*"],  # Permite todos los headers (como Content-Type)
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Asociar enrutador a la app principal

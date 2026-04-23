@@ -21,11 +21,11 @@ data:
   # LangSmith
   LANGSMITH_PROJECT: "BMO"
   LANGCHAIN_TRACING_V2: "true"
+  OLLAMA_BASE_URL: "http://ollama.host.internal:11434"
 
   # OpenTelemetry
-  OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector-opentelemetry-collector.observability.svc.cluster.local:4317"
-  OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector-opentelemetry-collector.observability.svc.cluster.local:4318"
+  OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
   OTEL_RESOURCE_ATTRIBUTES: "service.namespace=personal-ai,deployment.environment=production"
   
-  # MLflow
-  MLFLOW_TRACKING_URI: "http://mlflow-service.personal-ai.svc.cluster.local:5000"
+

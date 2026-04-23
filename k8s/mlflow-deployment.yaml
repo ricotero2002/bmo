@@ -19,7 +19,7 @@ spec:
         - "host.k3d.internal"
       containers:
       - name: mlflow
-        image: ghcr.io/mlflow/mlflow:v2.11.3
+        image: ghcr.io/mlflow/mlflow:v3.11.1
         ports:
         - containerPort: 5000
         env:
@@ -38,6 +38,7 @@ spec:
           --default-artifact-root=s3://mlflow-artifacts/
           --static-prefix /mlflow
           --host=0.0.0.0
+          --allowed-hosts="*"
 ---
 apiVersion: v1
 kind: Service
