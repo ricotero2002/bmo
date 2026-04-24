@@ -9,3 +9,7 @@ langsmith
 pandas
 pyarrow
 s3fs
+deepeval
+langchain-openai
+langchain-openrouter
+langchain-ollama

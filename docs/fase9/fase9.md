@@ -135,8 +135,6 @@ Excluido:
 5. ELT dbt. (Usando langsmith)
 6. Evaluaciones en dag.
 
-Tengo que chequear/modificar spark_silver (tengo que hacer como ingest bronze, ademas quizas es mejor usar dbt y pasar los de langsmith a bronze primero), entonces tambie nver extract_langsmith. Aparte tengo que ver spark_evaluator y el pipileine_llm_telemetry en general.
-
 
 7. Ingesta batch/streaming.
 8. Reporte de ingesta.

@@ -8,20 +8,25 @@ with source_data as (
 cleaned as (
   select
     run_id,
-    name,
     cast(start_time as timestamp) as start_time,
-    cast(latency_ms as double) as latency_ms,
+    date,
     lower(trim(status)) as status,
-    user_id,
-    thread_id,
-    test_type,
-    tags,
-    split(regexp_replace(coalesce(tags, ''), '\\s+', ''), ',') as tags_array,
+    error_message,
+    cast(latency_ms as double) as latency_ms,
+    
+    -- Extracción nativa de JSON usando Spark SQL
+    get_json_object(inputs_json, '$.user_info.user_id') as user_id,
+    -- thread_id puede venir en los tags o lo extraemos si lo inyectaste
+    get_json_object(inputs_json, '$.messages[0][1]') as user_query, 
+    
     cast(prompt_tokens as bigint) as prompt_tokens,
     cast(completion_tokens as bigint) as completion_tokens,
     cast(total_tokens as bigint) as total_tokens,
     cast(total_cost_usd as double) as total_cost_usd,
-    source_type,
+    
+    inputs_json,
+    outputs_json,
+    tools_used,
     ingested_at,
     case when lower(trim(status)) = 'error' then true else false end as is_error
   from source_data

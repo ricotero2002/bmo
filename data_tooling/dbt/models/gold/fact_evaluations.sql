@@ -3,21 +3,26 @@
 with runs as (
   select *
   from {{ ref('stg_agent_runs') }}
+),
+
+evals as (
+  select *
+  from {{ source('lakehouse_gold', 'agent_evaluations') }}
 )
 
 select
-  run_id,
-  date_trunc('day', start_time) as run_day,
-  user_id,
-  source_type,
-  status,
+  r.run_id,
+  date_trunc('day', r.start_time) as run_day,
+  r.user_id,
+  r.status,
+  e.answer_relevancy,
+  e.faithfulness,
+  e.relevancy_reason,
+  e.faithfulness_reason,
   case
-    when status = 'success' then 'pending_deepeval'
-    else 'failed_before_eval'
-  end as evaluation_state,
-  cast(null as double) as faithfulness_score,
-  cast(null as double) as answer_relevancy_score,
-  cast(null as double) as context_precision_score,
-  cast(null as double) as context_recall_score,
-  ingested_at
-from runs
+    when e.run_id is not null then 'evaluated'
+    when r.is_error then 'failed_before_eval'
+    else 'pending_or_skipped'
+  end as evaluation_state
+from runs r
+left join evals e on r.run_id = e.run_id

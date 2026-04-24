@@ -22,7 +22,7 @@ default_args = {
 with DAG(
     dag_id="pipeline_llm_telemetry",
     start_date=datetime(2026, 1, 1),
-    schedule="@daily",
+    schedule=None,
     catchup=False,
     tags=["lakehouse", "telemetry", "langsmith", "spark", "iceberg"],
     default_args=default_args,
@@ -30,27 +30,30 @@ with DAG(
     
     start = EmptyOperator(task_id="start")
 
-    # 1. Extraction: LangSmith -> MinIO (Bronze Parquet)
+    # 1. Extracción: LangSmith -> MinIO (Landing Zone - Parquet en chunks)
     extract_task = PythonOperator(
         task_id="extract_from_langsmith",
         python_callable=fetch_yesterday_data,
-        op_kwargs={"ds": "{{ ds }}"}, # Injected by Airflow
+        op_kwargs={"ds": "{{ ds }}"},
     )
 
-    # 2. Transformation: Bronze Parquet -> Iceberg Silver
-    transform_silver_task = SparkSubmitOperator(
-        task_id="spark_transform_silver",
-        application="/opt/airflow/tasks/spark_silver.py",
+    # 2. Registro: Landing Parquet -> Iceberg Bronze
+    register_bronze_task = SparkSubmitOperator(
+        task_id="register_bronze_iceberg",
+        application="/opt/airflow/tasks/register_bronze.py",
         application_args=["--ds", "{{ ds }}"],
         conn_id="spark_default",
-        conf={
-            "spark.sql.extensions": "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",
-            "spark.sql.catalog.lakehouse": "org.apache.iceberg.spark.SparkCatalog",
-            # Add other Iceberg/S3 configs if not in spark_default
-        }
     )
 
-    # 3. Evaluation & Forensics: Silver -> Iceberg Gold
+    # 3. Transformación Silver: DBT sobre Spark (Iceberg Bronze -> Iceberg Silver)
+    # dbt se conecta al Thrift Server y ejecuta SQL nativo en Spark
+    dbt_silver_task = BashOperator(
+        task_id="dbt_run_silver",
+        cwd="/opt/airflow/dbt",
+        bash_command="dbt run --profiles-dir /opt/airflow/dbt --select models/silver",
+    )
+
+    # 4. Evaluación & Forense: Silver -> Iceberg Gold (Spark con Checkpoints)
     evaluate_and_forensics_task = SparkSubmitOperator(
         task_id="spark_evaluate_gold",
         application="/opt/airflow/tasks/spark_evaluator.py",
@@ -58,13 +61,14 @@ with DAG(
         conn_id="spark_default",
     )
 
-    # 4. Aggregations: dbt Gold Views (Optional)
-    dbt_gold_views = BashOperator(
-        task_id="dbt_run_gold_views",
+    # 5. Agregaciones Gold: DBT (Iceberg Gold Eval -> Vistas de Negocio)
+    dbt_gold_task = BashOperator(
+        task_id="dbt_run_gold",
         cwd="/opt/airflow/dbt",
         bash_command="dbt run --profiles-dir /opt/airflow/dbt --select models/gold",
     )
 
     end = EmptyOperator(task_id="end")
 
-    start >> extract_task >> transform_silver_task >> evaluate_and_forensics_task >> dbt_gold_views >> end
+    # Orquestación: Flujo completo del Lakehouse
+    start >> extract_task >> register_bronze_task >> dbt_silver_task >> evaluate_and_forensics_task >> dbt_gold_task >> end

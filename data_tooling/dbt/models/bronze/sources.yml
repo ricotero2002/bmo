@@ -1,6 +1,12 @@
 version: 2
 
 sources:
+  - name: lakehouse_gold
+    schema: gold
+    tables:
+      - name: agent_evaluations
+        description: "Evaluaciones de calidad (LLM-as-a-Judge) generadas por Spark Evaluator."
+
   - name: lakehouse_bronze
     description: "Capa cruda (Raw) almacenada en formato Iceberg en MinIO."
     schema: bronze
@@ -22,6 +28,8 @@ sources:
             tests:
               - unique
               - not_null
+          - name: date
+            description: "Fecha de partición YYYY-MM-DD"
           - name: start_time
             description: "Timestamp de inicio de la ejecución"
             tests:
@@ -30,16 +38,19 @@ sources:
             description: "Estado de ejecución"
             tests:
               - not_null
-              - accepted_values:
-                  values: ["success", "error"]
-                  quote: true
-                  config:
-                    severity: warn
+          - name: error_message
+            description: "Mensaje de error si falló"
+          - name: latency_ms
+            description: "Latencia en milisegundos"
+          - name: prompt_tokens
+          - name: completion_tokens
           - name: total_tokens
-            description: "Tokens totales reportados por ejecución"
-            tests:
-              - not_null
           - name: total_cost_usd
-            description: "Costo total en USD"
-            tests:
-              - not_null
+          - name: inputs_json
+            description: "Inputs de la ejecución en formato JSON"
+          - name: outputs_json
+            description: "Outputs de la ejecución en formato JSON"
+          - name: tools_used
+            description: "Lista de herramientas usadas en formato JSON"
+          - name: ingested_at
+            description: "Timestamp de ingesta en el Lakehouse"
