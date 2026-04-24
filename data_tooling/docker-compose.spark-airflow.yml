@@ -88,6 +88,10 @@ services:
     environment: &airflow-common-env
       AIRFLOW_HOME: /opt/airflow
       AIRFLOW__WEBSERVER__SECRET_KEY: "bmo_super_secret_key_12345"
+      # --- CREDENCIALES DE LANGSMITH ---
+      LANGCHAIN_API_KEY: ${LANGCHAIN_API_KEY}
+      LANGCHAIN_PROJECT: ${LANGCHAIN_PROJECT:-BMO}
+      # ---------------------------------
       # --- CeleryExecutor: Escabilidad total ---
       AIRFLOW__CORE__EXECUTOR: CeleryExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow_secret@postgres-airflow:5432/airflow
@@ -130,13 +134,13 @@ services:
   airflow-worker:
     <<: *airflow-common
     container_name: bmo_airflow_worker
-    hostname: bmo-worker
+    hostname: airflow-worker
     environment:
       <<: *airflow-common-env
-      # Variable corregida (WORKER_HOSTNAME -> CELERY_HOSTNAME)
-      AIRFLOW__CELERY__CELERY_HOSTNAME: bmo-worker
-    # Le pasamos el argumento explícitamente para garantizar que Celery no reciba un None
-    command: "airflow celery worker --celery-hostname bmo-worker"
+      # Variable corregida para DNS de Docker
+      AIRFLOW__CELERY__CELERY_HOSTNAME: airflow-worker
+    # Le pasamos el argumento explícitamente como airflow-worker
+    command: "airflow celery worker --celery-hostname airflow-worker"
     depends_on:
       - spark-thrift
 
