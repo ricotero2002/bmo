@@ -12,7 +12,7 @@ class DataLakeProvider:
     """
     def __init__(self):
         # Configuraciones desde variables de entorno para facilitar el cambio de proveedor
-        self.endpoint = os.getenv("MINIO_ENDPOINT", "http://minio:9000")
+        self.endpoint = os.getenv("MINIO_ENDPOINT") or os.getenv("LAKEHOUSE_S3_ENDPOINT") or "http://minio:9000"
         self.key = os.getenv("MINIO_ROOT_USER", "lakehouse")
         self.secret = os.getenv("MINIO_ROOT_PASSWORD", "lakehouse123")
         

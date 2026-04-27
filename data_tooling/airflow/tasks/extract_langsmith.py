@@ -20,14 +20,28 @@ logger = logging.getLogger(__name__)
 
 CHUNK_SIZE = 1000  # Límite de filas en RAM por chunk
 
-def fetch_yesterday_data(ds, project_name="bmo_production_rag"):
+def fetch_yesterday_data(ds, project_name=None, start_time_custom=None, end_time_custom=None):
     """
     Extrae trazas de LangSmith de forma incremental en chunks para evitar OOM.
     ds: YYYY-MM-DD (fecha de ejecución de Airflow)
     """
+    if project_name is None:
+        project_name = os.getenv("LANGCHAIN_PROJECT", "BMO")
+        
     client = Client()
-    start_time = datetime.strptime(ds, "%Y-%m-%d")
-    end_time = start_time + timedelta(days=1)
+
+    # Manejo de tiempos personalizados (vía params de Airflow)
+    if start_time_custom and str(start_time_custom).lower() != "none":
+        logger.info(f"🕒 Usando start_time personalizado: {start_time_custom}")
+        start_time = datetime.fromisoformat(str(start_time_custom).replace("Z", "+00:00"))
+    else:
+        start_time = datetime.strptime(ds, "%Y-%m-%d")
+
+    if end_time_custom and str(end_time_custom).lower() != "none":
+        logger.info(f"🕒 Usando end_time personalizado: {end_time_custom}")
+        end_time = datetime.fromisoformat(str(end_time_custom).replace("Z", "+00:00"))
+    else:
+        end_time = start_time + timedelta(days=1)
     
     lake_provider = DataLakeProvider()
 

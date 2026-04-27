@@ -43,7 +43,7 @@ def register_bronze(ds):
         """)
 
         # 2. Leer de la zona de aterrizaje (Landing)
-        input_path = f"s3://bronze/langsmith_raw/date={ds}/"
+        input_path = f"s3a://bronze/langsmith_raw/date={ds}/"
         logger.info(f"Leyendo archivos Parquet desde {input_path}")
         
         df_new = spark.read.parquet(input_path)

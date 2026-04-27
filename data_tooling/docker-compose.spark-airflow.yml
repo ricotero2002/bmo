@@ -10,7 +10,7 @@ services:
     volumes:
       - postgres-airflow-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      test: [ "CMD-SHELL", "pg_isready -U airflow -d airflow" ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -21,7 +21,7 @@ services:
     image: redis:7-alpine
     container_name: bmo_airflow_redis
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -36,7 +36,7 @@ services:
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-lakehouse}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-lakehouse123}
       AWS_REGION: us-east-1
-    entrypoint: ["/opt/spark/bin/spark-submit"]
+    entrypoint: [ "/opt/spark/bin/spark-submit" ]
     command:
       - "--class"
       - "org.apache.spark.sql.hive.thriftserver.HiveThriftServer2"
@@ -71,6 +71,11 @@ services:
       - "4040:4040"
     volumes:
       - ../:/opt/project
+    healthcheck:
+      test: ["CMD-SHELL", "cat < /dev/null > /dev/tcp/localhost/10000 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
     restart: unless-stopped
 
   # --- Airflow Common: Configuración base ---
@@ -118,11 +123,7 @@ services:
     <<: *airflow-common
     container_name: bmo_airflow_webserver
     command: >
-      bash -lc "
-      airflow db migrate;
-      airflow users create --username admin --firstname admin --lastname admin --role Admin --email admin@example.com --password admin || true;
-      airflow webserver --port 8080
-      "
+      bash -lc " airflow db migrate; airflow users create --username admin --firstname admin --lastname admin --role Admin --email admin@example.com --password admin || true; airflow webserver --port 8080 "
     ports:
       - "8085:8080"
 
@@ -142,7 +143,8 @@ services:
     # Le pasamos el argumento explícitamente como airflow-worker
     command: "airflow celery worker --celery-hostname airflow-worker"
     depends_on:
-      - spark-thrift
+      spark-thrift:
+        condition: service_healthy
 
 volumes:
   postgres-airflow-data:

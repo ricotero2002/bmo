@@ -7,6 +7,10 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, lit, udf, get_json_object
 from pyspark.sql.types import StringType
 
+# Asegurar acceso a los providers del proyecto
+sys.path.append("/opt/project")
+from src.providers.lakehouse.spark_utils import get_iceberg_spark_session
+
 # Configuración de logs para el worker
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -73,6 +77,32 @@ class GeminiJudge(DeepEvalBaseLLM):
 # LA FUNCIÓN UDF: Esto corre en los workers de Spark
 # =========================================================================
 def evaluate_llm_quality_deepeval(inputs_json_str, outputs_json_str):
+    # =========================================================================
+    # MOCK (Temporalmente activo)
+    # =========================================================================
+    try:
+        is_approved = len(inputs_json_str or "") % 2 == 0
+        if is_approved:
+            return json.dumps({
+                "answer_relevancy_score": 0.95,
+                "faithfulness_score": 0.98,
+                "relevancy_reason": "✅ [MOCK] La respuesta es relevante.",
+                "faithfulness_reason": "✅ [MOCK] No se detectaron contradicciones."
+            })
+        else:
+            return json.dumps({
+                "answer_relevancy_score": 0.40,
+                "faithfulness_score": 0.35,
+                "relevancy_reason": "❌ [MOCK] La respuesta no aborda la consulta.",
+                "faithfulness_reason": "❌ [MOCK] Se detectaron alucinaciones."
+            })
+    except Exception as e:
+        return json.dumps({"error": f"Mock error: {str(e)}"})
+
+    # =========================================================================
+    # ORIGINAL (Comentado)
+    # =========================================================================
+    """
     try:
         from deepeval.test_case import LLMTestCase
         from deepeval.metrics import AnswerRelevancyMetric, FaithfulnessMetric
@@ -128,6 +158,7 @@ def evaluate_llm_quality_deepeval(inputs_json_str, outputs_json_str):
     except Exception as e:
         import traceback
         return json.dumps({"error": str(e), "traceback": traceback.format_exc()})
+    """
 
 eval_udf = udf(evaluate_llm_quality_deepeval, StringType())
 
@@ -135,12 +166,9 @@ eval_udf = udf(evaluate_llm_quality_deepeval, StringType())
 # JOB PRINCIPAL
 # =========================================================================
 def process_evaluations(ds):
-    spark = SparkSession.builder \
-        .appName(f"Telemetry_Gold_Eval_{ds}") \
-        .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions") \
-        .getOrCreate()
+    spark = get_iceberg_spark_session(f"Telemetry_Gold_Eval_{ds}")
 
-    spark.sparkContext.setCheckpointDir("s3://warehouse/checkpoints/")
+    spark.sparkContext.setCheckpointDir("s3a://warehouse/checkpoints/")
 
     logger.info(f"🚀 Iniciando JOB de evaluación (Self-Contained) para: {ds}")
 
@@ -155,8 +183,9 @@ def process_evaluations(ds):
     # Calidad (Modo Test)
     df_success = df_silver.filter(col("is_error") == False)
     if df_success.count() > 0:
-        logger.info(f"⚖️ Evaluando 1 registro de éxito (Modo Test)...")
-        df_sample = df_success.limit(1).checkpoint()
+        logger.info(f"⚖️ Evaluando 2 registros de éxito (Modo MOCK)...")
+        # df_sample = df_success.sample(withReplacement=False, fraction=0.1).limit(50).checkpoint()
+        df_sample = df_success.limit(2).checkpoint()
 
         df_evaluated = df_sample.withColumn("eval_json", eval_udf(col("inputs_json"), col("outputs_json")))
 

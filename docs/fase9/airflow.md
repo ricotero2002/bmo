@@ -67,3 +67,63 @@ Te recomiendo cambiar a RabbitMQ SÓLO SI:
 Vas a procesar decenas de miles de micro-tareas por minuto y la latencia del reintento automático del Scheduler de Airflow (que puede tardar un par de minutos en darse cuenta de que una tarea se perdió) es inaceptable para tu negocio.
 
 Tienes políticas estrictas de infraestructura que prohíben brokers en memoria sin persistencia AMQP.
+
+
+2026-04-07T00:00:00
+2026-04-11T00:00:00
+
+
+Es una excelente pregunta técnica. Para entenderlo, hay que separar quién pone la fuerza bruta (el motor) de cómo se organizan los datos (el formato).
+
+1. El "Master Local" (local[*])
+Esto define el entorno de ejecución. Cuando ponemos local[*], le estamos diciendo a Spark: "No busques un cluster de 100 servidores. Usa los núcleos de procesador que tiene este contenedor (el worker) para hacer el trabajo".
+
+Es como si decidieras mover cajas tú mismo en lugar de contratar una flota de camiones. Es más sencillo de configurar para desarrollo local.
+2. El "Spark con Iceberg"
+Esto define el formato y la gestión de datos. Spark por sí solo sabe leer archivos simples (CSV, JSON, Parquet). Pero para manejar una "Tabla Iceberg" (que permite cosas como transacciones, borrar filas específicas o ver el historial de cambios), necesita librerías extra y una configuración específica.
+
+Aunque el motor sea "local" (tú mismo moviendo las cajas), necesitas el "manual de Iceberg" para saber en qué orden poner los archivos en MinIO para que se comporten como una base de datos profesional.
+En resumen:
+local[*]: Es el MOTOR. Significa que el Airflow Worker hace el trabajo pesado él solo.
+Iceberg: Es la INTELIGENCIA. Le dice al motor local cómo escribir en MinIO de forma que los datos queden ordenados, catalogados y con soporte para SQL avanzado.
+¿Por qué lo hacemos así? Porque es la forma más barata y rápida de tener un "Data Lakehouse" profesional funcionando en tu propia computadora. Si mañana tuvieras millones de datos, solo tendrías que cambiar local[*] por la IP de un cluster real (como Amazon EMR o Databricks), y todo el resto del código seguiría funcionando igual._
+
+
+. ¿Por qué usamos Spark "afuera" y "adentro" del script?
+Es una cuestión de lenguaje y ejecución:
+
+Afuera (spark-submit): Es el comando que enciende el motor. Es como girar la llave del coche. Sin esto, el sistema operativo no entendería qué hacer con un archivo que usa librerías de Spark.
+Adentro (spark.read, spark.write): Es el volante y los pedales. Una vez que el motor está encendido, el script le da órdenes precisas: "Ahora lee esta carpeta", "Ahora guarda esto en Iceberg".
+3. ¿Cómo maneja Spark muchísimos datos? ¿Lo divide solo?
+¡Exacto! Esa es la magia de Spark. Se llama Procesamiento Distribuido:
+
+División Automática: Cuando haces spark.read.parquet, Spark no descarga el archivo entero. Mira los metadatos y dice: "Ok, esto mide 100GB, lo voy a dividir en 1000 pedazos (Partitions) de 100MB".
+Paralelismo: Como usamos local[*], si tu computadora tiene 4 núcleos, Spark procesará 4 "pedazos" a la vez. Si tuvieras un cluster de 10 servidores, procesaría cientos a la vez.
+Gestión de Memoria: Spark es muy inteligente; va leyendo pedazos, los procesa y los va soltando. Nunca intenta meter todo el archivo en la RAM a menos que tú se lo pidas explícitamente (lo cual sería un error).
+4. ¿Y el spark-thrift no era el motor?
+Sí, es UN motor que está siempre encendido (como un taxi esperando en la parada).
+
+DBT lo usa porque es más rápido mandarle una sola frase SQL a alguien que ya está "caliente" y encendido.
+Tus scripts de Python los lanzamos con spark-submit porque suelen ser procesos más largos, pesados y complejos que necesitan su propio espacio limpio para trabajar (como un coche de alquiler que usas para un viaje largo y luego devuelves).
+Resumen: Usas Spark dentro de un script de Python porque Spark es una herramienta que te permite escribir código que se "autogestiona" para no romper la memoria, dividiendo el trabajo en trozos pequeños sin que tú tengas que programar esa división a mano.
+
+El Spark que usas dentro de register_bronze.py es el que se genera al hacer spark-submit.
+
+Tómalo de esta manera:
+
+spark-thrift: Es un motor "comunitario". Siempre está ahí. (Como un Autobús).
+spark-submit: Es un motor "privado" que nace y muere con tu tarea. (Como un Coche de alquiler).
+Actualmente, cuando Airflow ejecuta el script, alquila un "coche" (motor Spark), hace el viaje (procesa los datos) y lo devuelve (apaga el motor). El spark-thrift no se entera de nada de esto, aunque ambos usen la misma "carretera" (MinIO).
+
+¿Cómo sería usar un Spark remoto o un Cluster?
+Lo increíble de Spark es que tu script de Python (register_bronze.py) no cambiaría ni una sola línea. Lo único que cambiaría es la orden que le das a Airflow (o el comando de consola).
+
+Si mañana tuvieras un cluster real (por ejemplo, 10 servidores conectados), solo cambiarías el parámetro --master:
+
+Local (Hoy): spark-submit --master 'local[*]' ... (Usa la CPU de mi propia máquina)
+
+Cluster Standalone (Remoto): spark-submit --master 'spark://192.168.1.100:7077' ... (Airflow le manda el script a un servidor central y ese servidor reparte el trabajo entre 10 máquinas)
+
+Kubernetes: spark-submit --master 'k8s://https://mi-cluster-k8s:6443' ... (Spark levanta contenedores temporales en la nube para procesar los datos y luego los borra)
+
+En resumen: El código de tu aplicación (el "qué hacer") es independiente de la infraestructura (el "dónde correr"). Por eso Spark es el estándar en la industria: empiezas en tu laptop con local[*] y, cuando creces, solo cambias una palabra en la configuración para escalar a petabytes de datos en la nube._
