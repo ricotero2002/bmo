@@ -72,10 +72,11 @@ services:
     volumes:
       - ../:/opt/project
     healthcheck:
-      test: ["CMD-SHELL", "cat < /dev/null > /dev/tcp/localhost/10000 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 20
+      test: ["CMD-SHELL", "nc -z localhost 10000 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
     restart: unless-stopped
 
   # --- Airflow Common: Configuración base ---
@@ -112,6 +113,8 @@ services:
       AWS_REGION: us-east-1
       AIRFLOW__CORE__HOSTNAME_CHECK: "False"
       DBT_PROFILES_DIR: /opt/airflow/dbt
+      # Limit concurrency to avoid OOM with Spark
+      AIRFLOW__CELERY__WORKER_CONCURRENCY: 2
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/tasks:/opt/airflow/tasks
@@ -136,6 +139,11 @@ services:
     <<: *airflow-common
     container_name: bmo_airflow_worker
     hostname: airflow-worker
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "minio:host-gateway"
+      - "rest:host-gateway"
+      - "warehouse.minio:host-gateway"
     environment:
       <<: *airflow-common-env
       # Variable corregida para DNS de Docker
@@ -143,8 +151,12 @@ services:
     # Le pasamos el argumento explícitamente como airflow-worker
     command: "airflow celery worker --celery-hostname airflow-worker"
     depends_on:
-      spark-thrift:
+      postgres-airflow:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      spark-thrift:
+        condition: service_started
 
 volumes:
   postgres-airflow-data:

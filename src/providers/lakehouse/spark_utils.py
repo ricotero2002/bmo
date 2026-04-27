@@ -21,7 +21,7 @@ def get_iceberg_spark_session(app_name: str) -> SparkSession:
     return (
         SparkSession.builder.appName(app_name)
         # Packages necesarios para Iceberg y AWS/S3
-        .config("spark.jars.packages", "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.2,org.apache.iceberg:iceberg-aws-bundle:1.5.2")
+        .config("spark.jars.packages", "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.2,org.apache.iceberg:iceberg-aws-bundle:1.5.2,org.apache.hadoop:hadoop-aws:3.3.4")
         .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
         .config("spark.sql.defaultCatalog", "lakehouse")
         .config("spark.sql.catalog.lakehouse", "org.apache.iceberg.spark.SparkCatalog")
@@ -41,6 +41,9 @@ def get_iceberg_spark_session(app_name: str) -> SparkSession:
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
         .config("spark.hadoop.fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
         .config("spark.sql.catalog.lakehouse.s3.region", aws_region)
+        # Optimización de Memoria para local
+        .config("spark.driver.memory", "2g")
+        .config("spark.executor.memory", "2g")
         .getOrCreate()
     )
 

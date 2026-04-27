@@ -172,13 +172,24 @@ def process_evaluations(ds):
 
     logger.info(f"🚀 Iniciando JOB de evaluación (Self-Contained) para: {ds}")
 
-    df_silver = spark.read.format("iceberg").load("lakehouse.silver.agent_runs").filter(col("date") == lit(ds))
+    df_silver = spark.read.format("iceberg").load("lakehouse.silver.stg_agent_runs").filter(col("date") == lit(ds))
     
     # Análisis de Errores
     df_errors = df_silver.filter(col("is_error") == True)
     if df_errors.count() > 0:
         logger.info(f"🔎 Registrando {df_errors.count()} errores.")
-        df_errors.write.format("iceberg").mode("append").save("lakehouse.gold.agent_errors")
+        
+        spark.sql(f"""
+            CREATE TABLE IF NOT EXISTS lakehouse.gold.agent_errors (
+                run_id STRING,
+                date STRING,
+                error_message STRING,
+                ingested_at TIMESTAMP
+            ) USING iceberg
+        """)
+        
+        df_errors.select("run_id", "date", "error_message", "ingested_at") \
+            .write.format("iceberg").mode("append").save("lakehouse.gold.agent_errors")
 
     # Calidad (Modo Test)
     df_success = df_silver.filter(col("is_error") == False)
@@ -194,10 +205,34 @@ def process_evaluations(ds):
             .withColumn("faithfulness", get_json_object(col("eval_json"), "$.faithfulness_score").cast("double")) \
             .withColumn("relevancy_reason", get_json_object(col("eval_json"), "$.relevancy_reason")) \
             .withColumn("faithfulness_reason", get_json_object(col("eval_json"), "$.faithfulness_reason")) \
-            .drop("eval_json", "inputs_json", "outputs_json")
+            .select(
+                "run_id", 
+                "date", 
+                "answer_relevancy", 
+                "faithfulness", 
+                "relevancy_reason", 
+                "faithfulness_reason", 
+                "ingested_at"
+            )
 
         df_final = df_final.checkpoint()
-        df_final.write.format("iceberg").mode("overwrite").option("replaceWhere", f"date = '{ds}'").save("lakehouse.gold.agent_evaluations")
+        
+        spark.sql(f"""
+            CREATE TABLE IF NOT EXISTS lakehouse.gold.agent_evaluations (
+                run_id STRING,
+                date STRING,
+                answer_relevancy DOUBLE,
+                faithfulness DOUBLE,
+                relevancy_reason STRING,
+                faithfulness_reason STRING,
+                ingested_at TIMESTAMP
+            ) USING iceberg
+            PARTITIONED BY (date)
+        """)
+
+        df_final.write.format("iceberg").mode("overwrite") \
+            .option("replaceWhere", f"date = '{ds}'") \
+            .save("lakehouse.gold.agent_evaluations")
         
         logger.info(f"✅ Evaluación finalizada.")
     else:
@@ -209,4 +244,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--ds", required=True, help="Execution date YYYY-MM-DD")
     args = parser.parse_args()
-    process_evaluations(args.ds)
+    
+    try:
+        process_evaluations(args.ds)
+        logger.info("🚀 Script finished successfully.")
+        sys.exit(0)
+    except Exception as e:
+        logger.error(f"❌ Critical error in process_evaluations: {e}", exc_info=True)
+        sys.exit(1)

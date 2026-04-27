@@ -72,4 +72,10 @@ if __name__ == "__main__":
     parser.add_argument("--ds", required=True, help="Execution date YYYY-MM-DD")
     args = parser.parse_args()
     
-    register_bronze(args.ds)
+    try:
+        register_bronze(args.ds)
+        logger.info("🚀 Script finished successfully.")
+        sys.exit(0)
+    except Exception as e:
+        logger.error(f"❌ Critical error in register_bronze: {e}", exc_info=True)
+        sys.exit(1)
