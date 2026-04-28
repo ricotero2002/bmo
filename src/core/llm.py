@@ -4,72 +4,38 @@ from langchain_openrouter import ChatOpenRouter
 from langchain_ollama import ChatOllama
 from langchain_core.language_models.chat_models import BaseChatModel
 
-
 class LLMFactory:
-    """Fábrica de modelos nativa usando OpenRouter y fallbacks de modelos free."""
+    """Fábrica de modelos nativa usando NVIDIA NIM y fallbacks."""
 
+    # NVIDIA NIM Models (Modelos pesados y de propósito general extraídos del nuevo catálogo)
     HEAVY_MODEL_NAMES = [
-        "nousresearch/hermes-3-llama-3.1-405b:free",
-        "ollama/llama_1b_gpu",
-        "meta-llama/llama-3.3-70b-instruct:free",
-        "qwen/qwen3-next-80b-a3b-instruct:free",
-        "openai/gpt-oss-120b:free",
-        "nvidia/nemotron-3-super-120b-a12b:free",
-        "google/gemma-4-31b-it:free",
-        "google/gemma-4-26b-a4b-it:free",
-        "qwen/qwen3-coder:free",
-        "z-ai/glm-4.5-air:free",
-        "openai/gpt-oss-20b:free",
-        "google/gemma-3-27b-it:free",
-        "nvidia/nemotron-3-nano-30b-a3b:free",
-        "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
-        "minimax/minimax-m2.5:free",
-        "nvidia/nemotron-nano-12b-v2-vl:free",
-        "nvidia/nemotron-nano-9b-v2:free",
-        "meta-llama/llama-3.2-3b-instruct:free",
-        "google/gemma-3-4b-it:free",
-        "liquid/lfm-2.5-1.2b-instruct:free",
-        "liquid/lfm-2.5-1.2b-thinking:free",
-        "google/gemma-3n-e4b-it:free",
-        "google/gemma-3n-e2b-it:free",
+        "mistralai/mistral-large-3-675b-instruct-2512",
+        "moonshotai/kimi-k2-instruct",
+        "qwen/qwen3-coder-480b-a35b-instruct",
     ]
 
+    # Modelos rápidos para tareas LITE
     LITE_MODEL_NAMES = [
-        "meta-llama/llama-3.2-3b-instruct:free",
-        "ollama/qwen_force_gpu",
-        "google/gemma-3-4b-it:free",
-        "nvidia/nemotron-nano-9b-v2:free",
-        "google/gemma-3n-e4b-it:free",
-        "openai/gpt-oss-20b:free",
-        "liquid/lfm-2.5-1.2b-instruct:free",
-        "minimax/minimax-m2.5:free",
-        "google/gemma-3n-e2b-it:free",
-        "google/gemma-3-27b-it:free",
-        "nvidia/nemotron-3-nano-30b-a3b:free",
-        "google/gemma-4-26b-a4b-it:free",
-        "google/gemma-4-31b-it:free",
-        "qwen/qwen3-coder:free",
-        "z-ai/glm-4.5-air:free",
-        "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
-        "meta-llama/llama-3.3-70b-instruct:free",
-        "qwen/qwen3-next-80b-a3b-instruct:free",
-        "openai/gpt-oss-120b:free",
-        "nvidia/nemotron-3-super-120b-a12b:free",
-        "nousresearch/hermes-3-llama-3.1-405b:free",
-        "nvidia/nemotron-nano-12b-v2-vl:free",
-        "liquid/lfm-2.5-1.2b-thinking:free",
+        "meta/llama-4-maverick-17b-128e-instruct",
+        "mistralai/mistral-nemotron",
+        "google/gemma-3-27b-it",
     ]
 
-    PLANNER_PRIMARY = "liquid/lfm-2.5-1.2b-thinking:free"
-    JUDGE_PRIMARY = "meta-llama/llama-3.3-70b-instruct:free"
-    JUDGE_SECONDARY = "google/gemma-4-31b-it:free"
-    CODER_PRIMARY = "qwen/qwen3-coder:free"
+    # REEMPLAZO DEL PLANNER -> Usamos Mistral Large 3 que es excelente en Structured Output
+    PLANNER_PRIMARY = "mistralai/mistral-large-3-675b-instruct-2512"
+    
+    # REEMPLAZOS DEL JUDGE -> Usamos los modelos más grandes y precisos de la nueva lista
+    JUDGE_PRIMARY = "mistralai/mistral-large-3-675b-instruct-2512"
+    JUDGE_SECONDARY = "moonshotai/kimi-k2-instruct"
+    
+    # REEMPLAZO DEL CODER -> El nuevo Devstral o Qwen3
+    CODER_PRIMARY = "mistralai/devstral-2-123b-instruct-2512"
+
 
     @classmethod
     def _base_kwargs(cls) -> dict:
         return {
             "temperature": 0,
-            "model_kwargs": {"stream_options": {"include_usage": True}},
         }
 
     @classmethod
@@ -87,15 +53,34 @@ class LLMFactory:
     def _build_models_from_names(cls, model_names: list[str]):
         kwargs = cls._base_kwargs()
         models = []
+        
+        # Prefijos conocidos del nuevo catálogo de NVIDIA NIM
+        nim_prefixes = (
+            "meta/", "nvidia/", "mistralai/", "google/", "deepseek-ai/", 
+            "moonshotai/", "qwen/", "z.ai/", "stepfun-ai/", "bytedance/", 
+            "minimaxai/", "abacus.ai/"
+        )
+
         for name in model_names:
-            if name.startswith("ollama/"):
+            if "/" not in name or name.startswith(nim_prefixes):
+                # NVIDIA NIM logic
+                from langchain_nvidia_ai_endpoints import ChatNVIDIA
+                import os
+                
+                api_key = os.getenv("NVIDIA_API_KEY")
+                models.append(ChatNVIDIA(
+                    model=name,
+                    nvidia_api_key=api_key,
+                    temperature=kwargs.get("temperature", 0.0),
+                ))
+            elif name.startswith("ollama/"):
                 from src.core.config import settings
                 real_name = name.replace("ollama/", "")
                 models.append(ChatOllama(
                     model=real_name, 
                     base_url=settings.OLLAMA_BASE_URL,
                     temperature=kwargs.get("temperature", 0.0),
-                    num_ctx=1024,
+                    num_ctx=4096,
                     num_gpu=99
                 ))
             else:
@@ -120,7 +105,7 @@ class LLMFactory:
 
     @classmethod
     def _bind_and_fallback(cls, models, tools, response_format):
-        """Aplica herramientas, formatos estructurados y políticas de fallback a la lista de modelos proporcionada."""
+        """Aplica herramientas, formatos estructurados y políticas de fallback a la lista de modelos."""
         if tools is not None:
             models = [m.bind_tools(tools) for m in models]
 
@@ -142,16 +127,14 @@ class LLMFactory:
 
     @classmethod
     def create(cls, tools = None, response_format: Optional[Type[BaseModel]] = None) -> BaseChatModel:
-        """Modelo principal de razonamiento pesado (lista HEAVY o TOOL)."""
-        # Si requiere herramientas, usamos una lista restrictiva que soporta tools nativas en OpenRouter
+        """Modelo principal de razonamiento pesado."""
         if tools is not None:
+            # Lista de modelos actualizados para tool calling
             tool_models = [
-                "meta-llama/llama-3.3-70b-instruct:free",
-                "ollama/llama_1b_gpu",
-                "qwen/qwen3-coder:free",
-                "google/gemma-3-27b-it:free",
-                "nvidia/nemotron-nano-9b-v2:free",
-                "meta-llama/llama-3.2-3b-instruct:free"
+                "mistralai/mistral-large-3-675b-instruct-2512",
+                "moonshotai/kimi-k2-instruct",
+                "qwen/qwen3-coder-480b-a35b-instruct",
+                "meta/llama-4-maverick-17b-128e-instruct"
             ]
             models = cls._build_models_from_names(tool_models)
         else:
@@ -161,7 +144,7 @@ class LLMFactory:
 
     @classmethod
     def create_lite(cls, tools = None, response_format: Optional[Type[BaseModel]] = None) -> BaseChatModel:
-        """Modelo rápido para resumen, extracción y clasificación liviana (lista LITE)."""
+        """Modelo rápido para resumen, extracción y clasificación liviana."""
         models = cls._build_models_from_names(cls.LITE_MODEL_NAMES)
         return cls._bind_and_fallback(models, tools, response_format)
 

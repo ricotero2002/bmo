@@ -1,5 +1,7 @@
 import logging
 import json
+import os
+
 from datetime import date
 from typing import Optional, Sequence, List
 
@@ -27,7 +29,7 @@ TOOL_ERROR_PREFIX = "ERROR_TOOL:"
 
 class GeminiReranker(BaseDocumentCompressor):
     """
-    Usa el LLMFactory (Gemini) del proyecto para puntuar y reordenar 
+    Usa el LLMFactory (Gemini/Llama) del proyecto para puntuar y reordenar 
     los documentos extraídos inicialmente por Pinecone.
     """
     k: int = 5
@@ -92,6 +94,23 @@ REGLA DE ORO: No devuelvas explicaciones, solo el array JSON. Si no estás segur
             logger.error(f"Error en GeminiReranker: {e}")
             # Si falla el reranking, devolvemos los originales (seguridad)
             return documents[:self.k]
+
+
+class RerankerFactory:
+    @staticmethod
+    def get_reranker(k: int = 5) -> BaseDocumentCompressor:
+        reranker_type = os.getenv("RERANKER_TYPE", "nvidia") # Default to nvidia as per user request
+        
+        if reranker_type == "nvidia":
+            from langchain_nvidia_ai_endpoints import NVIDIARerank
+            return NVIDIARerank(
+                model="nvidia/nv-rerankqa-mistral-4b-v3",
+                top_n=k,
+                nvidia_api_key=os.getenv("NVIDIA_API_KEY")
+            )
+        else:
+            return GeminiReranker(k=k)
+
 
 
 class RetrieverInput(BaseModel):
@@ -238,8 +257,9 @@ def knowledge_base_retriever(
     )
 
     try:
-        # 1. Configurar Re-Ranker
-        reranker = GeminiReranker(k=k_results)
+        # 1. Configurar Re-Ranker (Abstraído vía Factory)
+        reranker = RerankerFactory.get_reranker(k=k_results)
+
         
         # 2. Configurar Retriever con Compresión (Re-Ranking)
         # Pedimos 2.5 veces más resultados a Pinecone para que el Re-Ranker tenga de donde elegir

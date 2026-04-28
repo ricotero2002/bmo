@@ -5,10 +5,16 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 class VectorStoreFactory:
     @staticmethod
     def get_embeddings():
-        return GoogleGenerativeAIEmbeddings(
-            model="models/gemini-embedding-001",
-            google_api_key=os.getenv("GOOGLE_API_KEY")
+        # return GoogleGenerativeAIEmbeddings(
+        #     model="models/gemini-embedding-001",
+        #     google_api_key=os.getenv("GOOGLE_API_KEY")
+        # )
+        from langchain_nvidia_ai_endpoints import NVIDIAEmbeddings
+        return NVIDIAEmbeddings(
+            model="nvidia/nv-embedqa-e5-v5",
+            nvidia_api_key=os.getenv("NVIDIA_API_KEY")
         )
+
 
     @staticmethod
     def get_provider():

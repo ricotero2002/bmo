@@ -142,7 +142,10 @@ services:
       - "8088:8088"
     volumes:
       - superset-data:/app/superset_home
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command: >
+
       /bin/sh -c "sleep 10 && pip install --quiet PyHive thrift thrift-sasl && superset db upgrade && superset fab create-admin --username admin --firstname Admin --lastname Lakehouse --email admin@bmo.com --password admin || true && superset init && superset run -h 0.0.0.0 -p 8088"
     restart: unless-stopped
 
