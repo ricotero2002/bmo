@@ -1,6 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Header
 from fastapi.responses import StreamingResponse, JSONResponse
-from src.schemas.fastapi import QueryRequest, QueryResponse, AskRequest, DeleteRequest, FeedbackRequest
+from src.schemas.fastapi import QueryRequest, QueryResponse, AskRequest, DeleteRequest, FeedbackRequest, TriggerIngestionRequest
 from src.api.dependencies import *
 from celery.result import AsyncResult
 from src.workers.celery_app import celery_app
@@ -84,6 +84,7 @@ async def ingest_batch(
     results = []
     errors = []
     
+    batch_uuid = uuid.uuid4()
     for file in files:
         doc_id = uuid.uuid4()
         try:
@@ -98,17 +99,102 @@ async def ingest_batch(
                     "content_type": file.content_type, 
                     "batch": True,
                     "document_date": document_date
-                }
+                },
+                batch_id=batch_uuid
             )
             results.append({**res, "filename": file.filename})
         except Exception as e:
             errors.append({"filename": file.filename, "error": str(e)})
             
+    final_status = "partial_success" if errors and results else ("success" if not errors else "failed")
+    
+    status_provider = orchestrator.status_provider
+    doc_ids = [res.get("doc_id") for res in results if res.get("doc_id")]
+    status_provider.save_batch_info(
+        batch_id=batch_uuid,
+        user_id=user_id,
+        status=final_status,
+        total_files=len(files),
+        doc_ids=doc_ids,
+        errors=errors
+    )
+            
     return {
-        "status": "partial_success" if errors and results else ("success" if not errors else "failed"),
+        "status": final_status,
+        "batch_id": str(batch_uuid),
         "processed": results,
         "errors": errors
     }
+
+@router.post("/ingest/trigger")
+async def trigger_ingestion(
+    request: TriggerIngestionRequest,
+    orchestrator = Depends(get_orchestrator)
+):
+    """
+    Endpoint para disparar la ingesta de archivos que ya se encuentran en el Storage (ej. MinIO).
+    Usado principalmente por Airflow/Background Workers para el patrón Claim-Check.
+    """
+    results = []
+    errors = []
+    
+    batch_uuid = uuid.UUID(request.batch_id) if request.batch_id else uuid.uuid4()
+    
+    for file_info in request.files:
+        doc_id = uuid.uuid4()
+        try:
+            # Llamamos al orquestador sin "content", por ende NO subirá a MinIO de nuevo,
+            # solo creará el job en Postgres y encolará en Celery usando el object_name.
+            res = await orchestrator.orchestrate_ingestion(
+                doc_id=doc_id,
+                filename=file_info.filename,
+                content=None,
+                user_id=request.user_id,
+                object_name=file_info.object_name,
+                metadata=file_info.metadata,
+                batch_id=batch_uuid,
+                file_hash=file_info.file_hash
+            )
+            # Si ya existía y está processado, el orquestador retorna "already_exists" en res["status"]
+            results.append({**res, "filename": file_info.filename})
+        except Exception as e:
+            errors.append({"filename": file_info.filename, "error": str(e)})
+            
+    final_status = "partial_success" if errors and results else ("success" if not errors else "failed")
+    
+    # Obtener el status_provider del orquestador u obtenerlo por dependencia
+    status_provider = orchestrator.status_provider
+    doc_ids = [res.get("doc_id") for res in results if res.get("doc_id")]
+    status_provider.save_batch_info(
+        batch_id=batch_uuid,
+        user_id=request.user_id,
+        status=final_status,
+        total_files=len(request.files),
+        doc_ids=doc_ids,
+        errors=errors
+    )
+            
+    return {
+        "status": final_status,
+        "batch_id": str(batch_uuid),
+        "processed": results,
+        "errors": errors
+    }
+
+@router.get("/ingestion-status/batch/{batch_id}")
+async def get_batch_status_details(
+    batch_id: str,
+    status_provider = Depends(get_status_provider)
+):
+    """Obtiene el estado detallado de un batch de ingesta."""
+    try:
+        batch_uuid = uuid.UUID(batch_id)
+        batch_details = status_provider.get_batch_details(batch_uuid)
+        if not batch_details:
+            return {"error": "Batch not found", "status_code": 404}
+        return batch_details
+    except ValueError:
+        return {"error": "Invalid UUID format", "status_code": 400}
 
 @router.get("/ingestion-status/{doc_id}")
 async def get_ingestion_status(

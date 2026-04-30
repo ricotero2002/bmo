@@ -16,6 +16,7 @@ class AskRequest(BaseModel):
     user_info: Optional[dict] = {"user_id": "User"}
     prompt_version: Optional[str] = "rag_v4"
 
+
 class DeleteRequest(BaseModel):
     doc_id: str
     user_id: str
@@ -28,3 +29,15 @@ class FeedbackRequest(BaseModel):
     tools_used: Optional[Any] = None
     score: int
     user_correction: Optional[str] = None
+
+class TriggerFile(BaseModel):
+    object_name: str
+    filename: str
+    file_hash: Optional[str] = None
+    metadata: Optional[dict] = None
+
+class TriggerIngestionRequest(BaseModel):
+    user_id: str
+    source_type: str
+    batch_id: Optional[str] = None
+    files: List[TriggerFile]

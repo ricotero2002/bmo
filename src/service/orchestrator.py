@@ -37,7 +37,9 @@ class IngestionOrchestrator:
         content: Optional[bytes] = None,
         user_id: Optional[str] = None,
         object_name: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        batch_id: Optional[uuid.UUID] = None,
+        file_hash: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Orquesta el proceso de ingesta:
@@ -49,8 +51,8 @@ class IngestionOrchestrator:
         self.validate_file(filename, content)
         
         try:
-            # Calcular hash del contenido para deduplicación
-            file_hash = hashlib.sha256(content).hexdigest() if content else None
+            # Calcular hash del contenido para deduplicación, o usar el provisto
+            file_hash = file_hash or (hashlib.sha256(content).hexdigest() if content else None)
 
             # --- Deduplicación idempotente por hash ---
             # Estados exitosos/en progreso → skip (ya existe o está siendo procesado)
@@ -85,6 +87,7 @@ class IngestionOrchestrator:
                 doc_id=doc_id,
                 user_id=user_id,
                 source_path=filename,
+                batch_id=batch_id,
                 file_hash=file_hash,
                 metadata=job_metadata
             )

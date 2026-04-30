@@ -22,6 +22,7 @@ from src.core.llm import LLMFactory
 from src.providers.checkpointer.factory import CheckpointerFactory
 from src.api.endpoints import router as api_router
 from src.api.debug import router as debug_router
+from src.api.integrations import router as integrations_router
 from src.service.agent import AgentService
 from langchain_core.tools.retriever import create_retriever_tool
 from src.tools.registry import ToolRegistry
@@ -109,3 +110,4 @@ app.add_middleware(
 # Asociar enrutador a la app principal
 app.include_router(api_router, prefix="/api")
 app.include_router(debug_router, prefix="/api")
+app.include_router(integrations_router, prefix="/api")

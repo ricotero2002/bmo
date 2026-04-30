@@ -5,6 +5,8 @@ import uuid
 from sqlalchemy import Column, String, Integer, DateTime, Text
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy_utils import StringEncryptedType
+from sqlalchemy_utils.types.encrypted.encrypted_type import FernetEngine
 
 Base = declarative_base()
 
@@ -99,3 +101,43 @@ class ChatFeedback(Base):
     score = Column(Integer, nullable=False)  # 1 for 👍, -1 for 👎
     user_correction = Column(Text, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
+
+class IngestionSyncState(Base):
+    __tablename__ = "ingestion_sync_state"
+
+    id = Column(GUID, primary_key=True, default=uuid.uuid4)
+    user_id = Column(String(255), nullable=False, index=True)
+    source_type = Column(String(50), nullable=False) # e.g., 'notion', 'obsidian'
+    last_sync_at = Column(DateTime, nullable=True)
+    status = Column(String(50), nullable=False, default="success")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class IngestionBatch(Base):
+    __tablename__ = "ingestion_batches"
+
+    batch_id = Column(GUID, primary_key=True, default=uuid.uuid4)
+    user_id = Column(String(255), nullable=True, index=True)
+    status = Column(String(50), nullable=False) # 'success', 'partial_success', 'failed'
+    total_files = Column(Integer, nullable=False, default=0)
+    doc_ids = Column(JSONText, nullable=True) # Lista de IDs de documentos procesados
+    errors = Column(JSONText, nullable=True)  # Detalles de errores si hubo
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+# Llave de encriptación AES-256 para tokens sensibles
+SECRET_KEY = os.getenv("DB_ENCRYPTION_KEY", "bmo_default_secret_key_32_bytes!!")
+
+class UserIntegration(Base):
+    __tablename__ = "user_integrations"
+
+    id = Column(String(255), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(255), nullable=False, index=True)
+    source_type = Column(String(50), nullable=False) # 'notion', 'obsidian', etc.
+    
+    # Datos encriptados en la base de datos, desencriptados mágicamente por SQLAlchemy
+    access_token = Column(StringEncryptedType(String(1024), SECRET_KEY, FernetEngine))
+    source_id = Column(StringEncryptedType(String(1024), SECRET_KEY, FernetEngine)) # ID de la BD o Pagina de Notion
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

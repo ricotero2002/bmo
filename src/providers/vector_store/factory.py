@@ -11,7 +11,7 @@ class VectorStoreFactory:
         # )
         from langchain_nvidia_ai_endpoints import NVIDIAEmbeddings
         return NVIDIAEmbeddings(
-            model="nvidia/nv-embedqa-e5-v5",
+            model="nvidia/nv-embed-v1",
             nvidia_api_key=os.getenv("NVIDIA_API_KEY")
         )
 

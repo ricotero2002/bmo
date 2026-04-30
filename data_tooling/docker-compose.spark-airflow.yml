@@ -115,9 +115,12 @@ services:
       DBT_PROFILES_DIR: /opt/airflow/dbt
       # Limit concurrency to avoid OOM with Spark
       AIRFLOW__CELERY__WORKER_CONCURRENCY: 2
+    env_file:
+      - .env
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/tasks:/opt/airflow/tasks
+      - ./airflow/logs:/opt/airflow/logs
       - ./dbt:/opt/airflow/dbt
       - ../:/opt/project
     restart: unless-stopped

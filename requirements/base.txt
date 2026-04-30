@@ -32,6 +32,7 @@ python-dotenv==1.2.2
 
 # --- Database ---
 SQLAlchemy==2.0.48
+sqlalchemy-utils
 alembic==1.15.2
 psycopg2-binary==2.9.10
 psycopg[binary,pool]

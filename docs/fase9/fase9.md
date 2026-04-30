@@ -137,6 +137,9 @@ Excluido:
 
 
 7. Ingesta batch/streaming.
+    7.1. Falta hacer seguro los endpoints que se llaman desde airflow para solo ser usados por eso.
+    7.2. Ver como pasar todo a el kluster de kubernetes.
+    7.3. Ver exactamente como funciona el tema de que te indique solo lo actualizado en notion, que pasa si borras cosas?
 8. Reporte de ingesta.
 9. Dashboards y BI.
 10. Migracion embeddings.
@@ -146,3 +149,5 @@ Excluido:
 - Todo cambio de infraestructura va con smoke tests y rollback.
 - Evitar `latest` en imagenes productivas; usar tags inmutables.
 - Mantener secretos centralizados y permisos minimos (least privilege).
+
+docker compose -f data_tooling/docker-compose.spark-airflow.yml up -d --build

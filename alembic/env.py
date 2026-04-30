@@ -23,6 +23,10 @@ from pathlib import Path
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
+from dotenv import load_dotenv
+
+# Cargar variables de entorno desde .env
+load_dotenv()
 
 # ── Aseguramos que el `src/` del proyecto esté en PYTHONPATH ─────────────────
 project_root = Path(__file__).resolve().parents[1]
