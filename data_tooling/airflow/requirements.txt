@@ -17,3 +17,4 @@ boto3
 python-dotenv
 oracledb
 notion-client==2.2.1
+python-dateutil

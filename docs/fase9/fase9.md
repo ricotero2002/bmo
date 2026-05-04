@@ -134,12 +134,12 @@ Excluido:
 4. Mlflow (solo iniciarlo y generar alguna metrica, no parte de evaluaciones). (No se uso finalmente)
 5. ELT dbt. (Usando langsmith)
 6. Evaluaciones en dag.
-
-
 7. Ingesta batch/streaming.
     7.1. Falta hacer seguro los endpoints que se llaman desde airflow para solo ser usados por eso.
     7.2. Ver como pasar todo a el kluster de kubernetes.
     7.3. Ver exactamente como funciona el tema de que te indique solo lo actualizado en notion, que pasa si borras cosas?
+
+
 8. Reporte de ingesta.
 9. Dashboards y BI.
 10. Migracion embeddings.

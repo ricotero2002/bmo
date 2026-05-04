@@ -2,7 +2,7 @@ import os
 import json
 from datetime import datetime
 import uuid
-from sqlalchemy import Column, String, Integer, DateTime, Text
+from sqlalchemy import Column, String, Integer, DateTime, Text, Boolean
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy_utils import StringEncryptedType
@@ -141,3 +141,22 @@ class UserIntegration(Base):
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class NotionSyncMetadata(Base):
+    """
+    Rastrea el estado individual de cada página/bloque descubierto en Notion.
+    Permite CDC granular y detección de páginas borradas (orphan detection).
+    """
+    __tablename__ = "notion_sync_metadata"
+
+    id               = Column(GUID, primary_key=True, default=uuid.uuid4)
+    user_id          = Column(String(255), nullable=False, index=True)
+    notion_id        = Column(String(255), nullable=False, index=True)  # ID de Notion (página/db)
+    parent_id        = Column(String(255), nullable=True)               # ID del padre en el árbol
+    object_type      = Column(String(50), nullable=False)               # 'page' | 'database'
+    last_edited_time = Column(DateTime, nullable=True)                  # Extraído de la API de Notion
+    file_hash        = Column(String(256), nullable=True)               # Hash del contenido (evita reprocessar sin cambios)
+    is_archived      = Column(Integer, default=0)                       # 1=eliminado/huérfano, 0=activo (Integer para Oracle compat.)
+    created_at       = Column(DateTime, default=datetime.utcnow)
+    updated_at       = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
