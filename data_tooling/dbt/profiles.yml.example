@@ -1,5 +1,5 @@
-# Copy this file to ~/.dbt/profiles.yml and replace the placeholders.
-# Keep this file as documentation only; do not commit secrets.
+# Local dbt profile for running inside data_tooling Airflow container.
+# In production, prefer injecting secrets via environment variables.
 
 bmo_lakehouse:
   target: dev
@@ -10,7 +10,6 @@ bmo_lakehouse:
       host: spark-thrift
       port: 10000
       user: dbt
-      database: lakehouse
       schema: bronze
       threads: 2
       connect_timeout: 30
