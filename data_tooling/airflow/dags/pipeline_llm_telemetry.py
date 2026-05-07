@@ -30,7 +30,9 @@ with DAG(
     params={
         "start_time": Param(None, type=["string", "null"], description="ISO format start time (e.g., 2026-04-23T17:00:00)"),
         "end_time": Param(None, type=["string", "null"], description="ISO format end time. Defaults to start_time + 1 day"),
-        "project": Param(os.getenv("LANGCHAIN_PROJECT", "BMO"), type="string", description="LangSmith project name")
+        "project": Param(os.getenv("LANGCHAIN_PROJECT", "BMO"), type="string", description="LangSmith project name"),
+        "sample_fraction": Param(1.0, type="number", description="Fracción de runs a evaluar (0.0 a 1.0)"),
+        "max_runs": Param(50, type="integer", description="Máximo de runs a evaluar")
     },
 ) as dag:
     
@@ -65,7 +67,7 @@ with DAG(
     # 4. Evaluación & Forense: Silver -> Iceberg Gold (Spark con Checkpoints)
     evaluate_and_forensics_task = BashOperator(
         task_id="spark_evaluate_gold",
-        bash_command="spark-submit --master 'local[*]' --packages 'org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.2,org.apache.iceberg:iceberg-aws-bundle:1.5.2,org.apache.hadoop:hadoop-aws:3.3.4' --name spark_evaluate_gold /opt/airflow/tasks/spark_evaluator.py --ds {{ ds }}",
+        bash_command="spark-submit --master 'local[*]' --packages 'org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.2,org.apache.iceberg:iceberg-aws-bundle:1.5.2,org.apache.hadoop:hadoop-aws:3.3.4' --name spark_evaluate_gold /opt/airflow/tasks/spark_evaluator.py --ds {{ ds }} --sample-fraction {{ params.sample_fraction }} --max-runs {{ params.max_runs }}",
     )
 
     # 5. Agregaciones Gold: DBT (Iceberg Gold Eval -> Vistas de Negocio)

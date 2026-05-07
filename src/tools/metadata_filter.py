@@ -104,7 +104,7 @@ class RerankerFactory:
         if reranker_type == "nvidia":
             from langchain_nvidia_ai_endpoints import NVIDIARerank
             return NVIDIARerank(
-                model="nvidia/nv-rerankqa-mistral-4b-v3",
+                model="nv-rerank-qa-mistral-4b:1",
                 top_n=k,
                 nvidia_api_key=os.getenv("NVIDIA_API_KEY")
             )

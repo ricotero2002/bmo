@@ -82,10 +82,16 @@ si ya estan hay que reimportar:
 
 docker build --target final-api -t personal_ai_api:latest -f docker/Dockerfile .
 docker build --target final-worker -t personal_ai_worker:latest -f docker/Dockerfile .
+docker build -t personal_ai_airflow:latest -f data_tooling/airflow/Dockerfile .
+
 k3d image import personal_ai_api:latest -c mycluster
 k3d image import personal_ai_worker:latest -c mycluster
+k3d image import personal_ai_airflow:latest -c mycluster
+
 
 k3d image import personal_ai_api:latest personal_ai_worker:latest -c mycluster
+
+
 
 kubectl rollout restart deployment -n personal-ai
 
@@ -104,7 +110,13 @@ kubectl get pods -n personal-ai -w
 
 # Ver logs de la API
 kubectl logs -n personal-ai -l app=api --follow
+kubectl logs -n personal-ai -l app=iceberg-rest --follow
+kubectl logs -n personal-ai -l app=spark-thrift --follow
+kubectl logs -n personal-ai -l app=bmo-airflow-worker --follow
+kubectl logs -n personal-ai -l app=bmo-airflow-webserver --follow
 
+
+helm install bmo-airflow apache-airflow/airflow -n personal-ai -f k8s/airflow/helm-values.yaml --timeout 10m
 # Ver logs del Worker
 kubectl logs -n personal-ai -l app=worker --follow
 ```

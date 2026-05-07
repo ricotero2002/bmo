@@ -22,6 +22,8 @@ class PromptLoader:
         Returns:
             ChatPromptTemplate con el system prompt y MessagesPlaceholder para el historial.
         """
+        version = version or "rag_v4"
+        file_name = file_name or "system.jinja2"
         base_dir = os.path.dirname(os.path.dirname(__file__))
         path = os.path.join(base_dir, "core", "prompts", version, file_name)
 
@@ -55,6 +57,7 @@ class PromptLoader:
         Lee y renderiza un template Jinja2 devolviendo el string resultante.
         Útil para calificadores y prompts auxiliares que no requieren historial de mensajes.
         """
+        version = version or "rag_v4"
         base_dir = os.path.dirname(os.path.dirname(__file__))
         path = os.path.join(base_dir, "core", "prompts", version, file_name)
 

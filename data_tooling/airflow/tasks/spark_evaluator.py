@@ -15,94 +15,12 @@ from src.providers.lakehouse.spark_utils import get_iceberg_spark_session
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# =========================================================================
-# FACTORY LITE (Embebida para evitar dependencias externas en los workers)
-# =========================================================================
-class WorkerLLMFactory:
-    """
-    Versión ligera de la fábrica de modelos, diseñada para correr en workers de Spark.
-    Solo soporta OpenRouter y Ollama (los modelos configurados actualmente).
-    """
-    @staticmethod
-    def create_judge():
-        # FORZADO: Uso de Ollama con llama_1b_gpu como pidió el usuario
-        from langchain_ollama import ChatOllama
-        model_name = "llama_1b_gpu"
-        base_url = "http://host.docker.internal:11434"
-        
-        logger.info(f"🤖 Inicializando Juez Ollama: {model_name} en {base_url}")
-        
-        return ChatOllama(
-            model=model_name,
-            base_url=base_url,
-            temperature=0,
-            num_ctx=4096 # Aumentamos contexto para evaluación si es posible
-        )
-
-# =========================================================================
-# EL JUEZ DE DEEPEVAL
-# =========================================================================
-from deepeval.models.base_model import DeepEvalBaseLLM
-
-class GeminiJudge(DeepEvalBaseLLM):
-    """
-    Wrapper de DeepEval que utiliza la fábrica interna del worker.
-    """
-    def __init__(self, model_name: str = "Judge-Worker"):
-        self.model_name = model_name
-        self.model = WorkerLLMFactory.create_judge()
-        
-    def _clean_json(self, text: str) -> str:
-        text = text.strip()
-        if text.startswith("```json"): text = text[7:]
-        elif text.startswith("```"): text = text[3:]
-        if text.endswith("```"): text = text[:-3]
-        return text.strip()
-
-    def load_model(self):
-        return self.model
-
-    def generate(self, prompt: str, schema=None, *args, **kwargs):
-        res = self.model.invoke(prompt)
-        return self._clean_json(res.content)
-
-    async def a_generate(self, prompt: str, schema=None, *args, **kwargs):
-        res = await self.model.ainvoke(prompt)
-        return self._clean_json(res.content)
-
-    def get_model_name(self):
-        return self.model_name
+from src.evals.eval_utils import NvidiaJudge
 
 # =========================================================================
 # LA FUNCIÓN UDF: Esto corre en los workers de Spark
 # =========================================================================
 def evaluate_llm_quality_deepeval(inputs_json_str, outputs_json_str):
-    # =========================================================================
-    # MOCK (Temporalmente activo)
-    # =========================================================================
-    try:
-        is_approved = len(inputs_json_str or "") % 2 == 0
-        if is_approved:
-            return json.dumps({
-                "answer_relevancy_score": 0.95,
-                "faithfulness_score": 0.98,
-                "relevancy_reason": "✅ [MOCK] La respuesta es relevante.",
-                "faithfulness_reason": "✅ [MOCK] No se detectaron contradicciones."
-            })
-        else:
-            return json.dumps({
-                "answer_relevancy_score": 0.40,
-                "faithfulness_score": 0.35,
-                "relevancy_reason": "❌ [MOCK] La respuesta no aborda la consulta.",
-                "faithfulness_reason": "❌ [MOCK] Se detectaron alucinaciones."
-            })
-    except Exception as e:
-        return json.dumps({"error": f"Mock error: {str(e)}"})
-
-    # =========================================================================
-    # ORIGINAL (Comentado)
-    # =========================================================================
-    """
     try:
         from deepeval.test_case import LLMTestCase
         from deepeval.metrics import AnswerRelevancyMetric, FaithfulnessMetric
@@ -114,7 +32,13 @@ def evaluate_llm_quality_deepeval(inputs_json_str, outputs_json_str):
         user_input = "Consulta desconocida"
         if "messages" in inputs and len(inputs["messages"]) > 0:
             msg = inputs["messages"][0]
-            user_input = msg[1] if isinstance(msg, list) and len(msg) > 1 else str(msg)
+            # Formato esperado: ["user", "texto"] o un objeto mensaje de LangChain
+            if isinstance(msg, list) and len(msg) > 1:
+                user_input = msg[1]
+            elif isinstance(msg, dict) and "content" in msg:
+                user_input = msg["content"]
+            else:
+                user_input = str(msg)
 
         # 2. Extraer Output y Contexto
         out_messages = outputs.get("messages", [])
@@ -126,6 +50,7 @@ def evaluate_llm_quality_deepeval(inputs_json_str, outputs_json_str):
             content = str(msg.get("content", "")).strip()
 
             if msg_type == "ai" and not content.startswith("[Pensamiento"):
+                # Limpiar bloques de fuentes para no sesgar la relevancia
                 if "### Fuentes" in content: content = content.split("### Fuentes")[0].strip()
                 elif "Fuentes:" in content: content = content.split("Fuentes:")[0].strip()
                 ai_output = content
@@ -139,12 +64,14 @@ def evaluate_llm_quality_deepeval(inputs_json_str, outputs_json_str):
         if not ai_output:
             ai_output = "El agente no generó respuesta."
 
-        # 3. Evaluar
-        judge = GeminiJudge() 
+        # 3. Evaluar usando el Juez centralizado de Nvidia NIM
+        judge = NvidiaJudge() 
         relevancy_metric = AnswerRelevancyMetric(threshold=0.7, model=judge)
         faithfulness_metric = FaithfulnessMetric(threshold=0.7, model=judge) 
 
         test_case = LLMTestCase(input=user_input, actual_output=ai_output, retrieval_context=retrieval_context)
+        
+        # Ejecutamos métricas (DeepEval internamente maneja el loop si se miden juntas)
         relevancy_metric.measure(test_case)
         faithfulness_metric.measure(test_case)
 
@@ -157,15 +84,15 @@ def evaluate_llm_quality_deepeval(inputs_json_str, outputs_json_str):
 
     except Exception as e:
         import traceback
+        logger.error(f"Error en UDF de evaluación: {e}")
         return json.dumps({"error": str(e), "traceback": traceback.format_exc()})
-    """
 
 eval_udf = udf(evaluate_llm_quality_deepeval, StringType())
 
 # =========================================================================
 # JOB PRINCIPAL
 # =========================================================================
-def process_evaluations(ds):
+def process_evaluations(ds, sample_fraction=1.0, max_runs=50):
     spark = get_iceberg_spark_session(f"Telemetry_Gold_Eval_{ds}")
 
     spark.sparkContext.setCheckpointDir("s3a://warehouse/checkpoints/")
@@ -194,9 +121,8 @@ def process_evaluations(ds):
     # Calidad (Modo Test)
     df_success = df_silver.filter(col("is_error") == False)
     if df_success.count() > 0:
-        logger.info(f"⚖️ Evaluando 2 registros de éxito (Modo MOCK)...")
-        # df_sample = df_success.sample(withReplacement=False, fraction=0.1).limit(50).checkpoint()
-        df_sample = df_success.limit(2).checkpoint()
+        logger.info(f"⚖️ Evaluando registros de éxito (Muestreo: {sample_fraction*100}%, Límite: {max_runs})...")
+        df_sample = df_success.sample(withReplacement=False, fraction=float(sample_fraction)).limit(int(max_runs)).checkpoint()
 
         df_evaluated = df_sample.withColumn("eval_json", eval_udf(col("inputs_json"), col("outputs_json")))
 
@@ -243,10 +169,12 @@ def process_evaluations(ds):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--ds", required=True, help="Execution date YYYY-MM-DD")
+    parser.add_argument("--sample-fraction", type=float, default=1.0, help="Fraction of runs to evaluate")
+    parser.add_argument("--max-runs", type=int, default=50, help="Maximum number of runs to evaluate")
     args = parser.parse_args()
     
     try:
-        process_evaluations(args.ds)
+        process_evaluations(args.ds, args.sample_fraction, args.max_runs)
         logger.info("🚀 Script finished successfully.")
         sys.exit(0)
     except Exception as e:

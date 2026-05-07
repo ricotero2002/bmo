@@ -52,7 +52,8 @@ def fetch_yesterday_data(ds, project_name=None, start_time_custom=None, end_time
         project_name=project_name,
         start_time=start_time,
         end_time=end_time,
-        execution_order=1 # Solo root runs (conversaciones completas)
+        execution_order=1, # Solo root runs (conversaciones completas)
+        name="LangGraph" # Filtrar solo runs del agente principal
     )
 
     chunk_data = []

@@ -7,29 +7,30 @@ from langchain_core.language_models.chat_models import BaseChatModel
 class LLMFactory:
     """Fábrica de modelos nativa usando NVIDIA NIM y fallbacks."""
 
-    # NVIDIA NIM Models (Modelos pesados y de propósito general extraídos del nuevo catálogo)
+    # NVIDIA NIM Models (Modelos pesados, gratuitos y estables)
+    # SACAMOS A MISTRAL LARGE 3 de la lista principal por su bug en NIM con las Tools
     HEAVY_MODEL_NAMES = [
-        "mistralai/mistral-large-3-675b-instruct-2512",
-        "moonshotai/kimi-k2-instruct",
         "qwen/qwen3-coder-480b-a35b-instruct",
+        "bytedance/seed-oss-36b-instruct",
+        "meta/llama-4-maverick-17b-128e-instruct",
     ]
 
-    # Modelos rápidos para tareas LITE
+    # Modelos ultra-rápidos para tareas LITE
     LITE_MODEL_NAMES = [
         "meta/llama-4-maverick-17b-128e-instruct",
         "mistralai/mistral-nemotron",
-        "google/gemma-3-27b-it",
+        "nvidia/nemotron-mini-4b-instruct",
     ]
 
-    # REEMPLAZO DEL PLANNER -> Usamos Mistral Large 3 que es excelente en Structured Output
-    PLANNER_PRIMARY = "mistralai/mistral-large-3-675b-instruct-2512"
+    # PLANNER -> Usamos Qwen3 que maneja Structured Output a la perfección
+    PLANNER_PRIMARY = "qwen/qwen3-coder-480b-a35b-instruct"
     
-    # REEMPLAZOS DEL JUDGE -> Usamos los modelos más grandes y precisos de la nueva lista
-    JUDGE_PRIMARY = "mistralai/mistral-large-3-675b-instruct-2512"
-    JUDGE_SECONDARY = "moonshotai/kimi-k2-instruct"
+    # JUDGES -> Mantenemos los que ya sabemos que devuelven JSON impecable
+    JUDGE_PRIMARY = "abacusai/dracarys-llama-3.1-70b-instruct"
+    JUDGE_SECONDARY = "meta/llama-4-maverick-17b-128e-instruct"
     
-    # REEMPLAZO DEL CODER -> El nuevo Devstral o Qwen3
-    CODER_PRIMARY = "mistralai/devstral-2-123b-instruct-2512"
+    # CODER -> Qwen3 Coder es top tier mundial y está en la capa gratuita
+    CODER_PRIMARY = "qwen/qwen3-coder-480b-a35b-instruct"
 
 
     @classmethod
@@ -72,6 +73,7 @@ class LLMFactory:
                     model=name,
                     nvidia_api_key=api_key,
                     temperature=kwargs.get("temperature", 0.0),
+                    max_tokens=8192,  # Evita que el JSON se ampute y cause errores 500 en NIM
                 ))
             elif name.startswith("ollama/"):
                 from src.core.config import settings
@@ -129,12 +131,11 @@ class LLMFactory:
     def create(cls, tools = None, response_format: Optional[Type[BaseModel]] = None) -> BaseChatModel:
         """Modelo principal de razonamiento pesado."""
         if tools is not None:
-            # Lista de modelos actualizados para tool calling
+            # LISTA DE MODELOS A PRUEBA DE BALAS PARA TOOL CALLING
             tool_models = [
-                "mistralai/mistral-large-3-675b-instruct-2512",
-                "moonshotai/kimi-k2-instruct",
                 "qwen/qwen3-coder-480b-a35b-instruct",
-                "meta/llama-4-maverick-17b-128e-instruct"
+                "meta/llama-4-maverick-17b-128e-instruct",
+                "bytedance/seed-oss-36b-instruct"
             ]
             models = cls._build_models_from_names(tool_models)
         else:

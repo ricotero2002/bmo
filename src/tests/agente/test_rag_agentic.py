@@ -21,7 +21,7 @@ from src.service.chunking import AgenticChunker
 from src.service.agent import AgentService
 from src.core.llm import LLMFactory
 from src.evals.golden_dataset_v2 import GOLDEN_DATASET
-from src.evals.eval_utils import GeminiJudge, ask_my_rag
+from src.evals.eval_utils import NvidiaJudge, ask_my_rag
 from src.providers.vector_store.factory import VectorStoreFactory
 from src.tools.registry import ToolRegistry
 from langgraph.checkpoint.memory import MemorySaver
@@ -55,7 +55,7 @@ async def test_rag_performance(rag_setup, goldcase):
     Exigimos un 0.8 en Precisión Contextual ahora que usamos Gemini Reranker.
     """
     agent_service = rag_setup
-    judge = GeminiJudge()
+    judge = NvidiaJudge()
     
     actual_output, retrieval_context = await ask_my_rag(
         agent_service, 
@@ -83,7 +83,8 @@ async def test_rag_performance(rag_setup, goldcase):
         AnswerRelevancyMetric(threshold=0.7, model=judge)
     ]
     
-    assert_test(test_case, metrics)
+    for metric in metrics:
+        assert_test(test_case, [metric])
 
 @pytest.mark.asyncio
 async def test_retriever_k_results(rag_setup):
@@ -132,7 +133,7 @@ async def test_reranking_logic(rag_setup):
     # El retriever ya tiene el re-ranking integrado internamente
     results = knowledge_base_retriever.invoke({"query": query, "k_results": 3}, config=config)
 
-    judge = GeminiJudge()
+    judge = NvidiaJudge()
     prompt = f"""Analiza si los siguientes fragmentos recuperados para la consulta "{query}" son altamente relevantes. 
     Documentos recuperados:
     {results}
@@ -145,7 +146,7 @@ async def test_reranking_logic(rag_setup):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("goldcase", GOLDEN_DATASET)
 async def test_chunking_quality(goldcase):
-    judge = GeminiJudge()
+    judge = NvidiaJudge()
     chunker = AgenticChunker(LLMFactory)
     
     generated_docs = chunker.chunk(goldcase["raw_text"])
@@ -238,7 +239,7 @@ async def test_multiturn_coherence(rag_setup):
 
     # Evaluación final de coherencia con LLM Judge
     full_conversation = "\n\n".join(chat_history_actual)
-    judge = GeminiJudge()
+    judge = NvidiaJudge()
     
     coherence_metric = GEval(
         name="Conversational Memory & Multi-hop Coherence",

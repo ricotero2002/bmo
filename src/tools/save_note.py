@@ -47,41 +47,42 @@ def save_note_to_knowledge_base(
         doc_id = str(uuid.uuid4())
         filename = f"agent_notes/{slug}_{timestamp}.md"
 
+        # --- COMENTADO TEMPORALMENTE: No publicar en Kafka por ahora ---
         # 3. Payload compatible con el schema del kafka_consumer.py:
-        #    doc_id, filename, user_id, content (str), metadata
-        payload = {
-            "doc_id": doc_id,
-            "filename": filename,
-            "user_id": user_id,
-            "content": formatted_content,  # El consumer lo encodea a bytes si es str
-            "metadata": {
-                "source": filename,
-                "doc_type": doc_type,
-                "title": title,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "origin": "bmo_agent_generated",
-            },
-        }
+        # payload = {
+        #     "doc_id": doc_id,
+        #     "filename": filename,
+        #     "user_id": user_id,
+        #     "content": formatted_content,
+        #     "metadata": {
+        #         "source": filename,
+        #         "doc_type": doc_type,
+        #         "title": title,
+        #         "created_at": datetime.now(timezone.utc).isoformat(),
+        #         "origin": "bmo_agent_generated",
+        #     },
+        # }
+        # 4. Publicar en Kafka
+        # producer = KafkaProducerWrapper.get_instance()
+        # producer.produce(
+        #     topic=settings.KAFKA_RAW_DOCUMENTS_TOPIC,
+        #     key=doc_id,
+        #     value=json.dumps(payload, ensure_ascii=False),
+        # )
+        # producer.flush(1.0)
+        # -------------------------------------------------------------
 
-        # 4. Publicar en Kafka — fire-and-forget
-        producer = KafkaProducerWrapper.get_instance()
-        producer.produce(
-            topic=settings.KAFKA_RAW_DOCUMENTS_TOPIC,
-            key=doc_id,
-            value=json.dumps(payload, ensure_ascii=False),
-        )
-        # Flush para asegurar envío inmediato
-        producer.flush(1.0)
-
-        logger.info(f"Nota '{title}' publicada en Kafka con doc_id={doc_id}")
+        logger.info(f"Nota '{title}' procesada (MOCK). Contenido: {len(formatted_content)} chars.")
+        
+        # Devolvemos el contenido completo para que el agente lo muestre al usuario
         return (
-            f"Nota '{title}' guardada exitosamente y procesándose en segundo plano. "
-            f"(ID: {doc_id})"
+            f"✅ Se guardó correctamente la nota '{title}' en la base de conocimientos.\n\n"
+            f"**Contenido de la nota:**\n{formatted_content}"
         )
 
     except Exception as e:
-        logger.error(f"Error al publicar nota en Kafka: {e}")
+        logger.error(f"Error al procesar nota: {e}")
         return (
-            "Hubo un error de comunicación al intentar guardar la nota. "
+            "Hubo un error al intentar guardar la nota. "
             "Por favor intenta nuevamente."
         )

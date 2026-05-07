@@ -5,6 +5,8 @@ dbt-adapters==1.1.1
 apache-airflow-providers-postgres==5.12.0
 psycopg2-binary==2.9.9
 apache-airflow-providers-apache-spark==4.8.1
+apache-airflow-providers-celery==3.8.4
+celery==5.3.6
 langsmith
 pandas
 pyarrow

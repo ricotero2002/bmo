@@ -1,0 +1,164 @@
+# =====================================================================
+# Airflow Helm Chart - Custom Values para BMO Personal AI Cluster
+# =====================================================================
+
+config:
+  webserver:
+    base_url: "http://localhost:8081/airflow"
+
+# ─────────────────────────────────────────────
+# 1. Imagen personalizada
+# ─────────────────────────────────────────────
+images:
+  airflow:
+    repository: personal_ai_airflow
+    tag: 2.10.5
+    pullPolicy: Never
+
+# ─────────────────────────────────────────────
+# 2. Executor
+# ─────────────────────────────────────────────
+executor: "CeleryExecutor"
+
+# ─────────────────────────────────────────────
+# 3. Base de Datos Externa (Aiven)
+# ─────────────────────────────────────────────
+postgresql:
+  enabled: false
+
+data:
+  metadataSecretName: airflow-metadata
+  resultBackendSecretName: airflow-metadata
+  brokerUrl: "overridden-by-env"
+
+# ─────────────────────────────────────────────
+# 4. Redis Externo (Upstash)
+# ─────────────────────────────────────────────
+redis:
+  enabled: false
+
+# ─────────────────────────────────────────────
+# 5. Variables de entorno (Limpio)
+# ─────────────────────────────────────────────
+extraEnvFrom: |-
+  - secretRef:
+      name: 'app-secrets'
+
+# FUNDAMENTAL: Apagamos la inyección automática del chart para el Broker.
+# Esto obliga a Airflow a leer AIRFLOW__CELERY__BROKER_URL directamente de 'app-secrets'.
+enableBuiltInSecretEnvVars:
+  AIRFLOW__CELERY__BROKER_URL: false
+
+env:
+  - name: AIRFLOW__CORE__LOAD_EXAMPLES
+    value: "False"
+  - name: AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION
+    value: "True"
+  - name: AIRFLOW__WEBSERVER__WEB_SERVER_MASTER_TIMEOUT
+    value: "300"
+  - name: AIRFLOW__CELERY__WORKER_CONCURRENCY
+    value: "2"
+  - name: LAKEHOUSE_REST_URI
+    value: "http://iceberg-rest-svc.personal-ai.svc.cluster.local:8181"
+  - name: LAKEHOUSE_S3_ENDPOINT
+    value: "https://$(OCI_NAMESPACE).compat.objectstorage.$(OCI_REGION).oraclecloud.com"
+  - name: AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_SIZE
+    value: "2"
+  - name: AIRFLOW__DATABASE__SQL_ALCHEMY_MAX_OVERFLOW
+    value: "1"
+  - name: AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_RECYCLE
+    value: "1800"
+  - name: AIRFLOW__WEBSERVER__WORKERS
+    value: "2"
+
+# ─────────────────────────────────────────────
+# 6. Ingress
+# ─────────────────────────────────────────────
+ingress:
+  web:
+    enabled: true
+    ingressClassName: traefik
+    path: /airflow
+    pathType: Prefix
+    hosts:
+      - name: "localhost"
+    annotations:
+      ingress.kubernetes.io/ssl-redirect: "false"
+      traefik.ingress.kubernetes.io/router.entrypoints: web
+
+# ─────────────────────────────────────────────
+# 7. Webserver & Admin User
+# ─────────────────────────────────────────────
+createUserJob:
+  useHelmHooks: false
+  applyCustomEnv: false # Recomendado para ArgoCD/Helm
+
+migrateDatabaseJob:
+  useHelmHooks: false
+  applyCustomEnv: false # Recomendado para ArgoCD/Helm
+
+webserver:
+  defaultUser:
+    enabled: true
+    role: Admin
+    username: admin
+    email: admin@example.com
+    firstName: Admin
+    lastName: Admin
+    password: admin
+  startupProbe:
+    initialDelaySeconds: 60
+    failureThreshold: 30
+    periodSeconds: 10
+  livenessProbe:
+    initialDelaySeconds: 60
+    failureThreshold: 10
+    periodSeconds: 10
+  readinessProbe:
+    initialDelaySeconds: 60
+    failureThreshold: 10
+    periodSeconds: 10
+
+# ─────────────────────────────────────────────
+# 8. Workers
+# ─────────────────────────────────────────────
+workers:
+  # Opcional: puedes dejar replicas omitido o en 0, KEDA toma el control
+  args:
+    - "bash"
+    - "-c"
+    # Forzamos el argumento usando $HOSTNAME que K8s inyecta automáticamente con el nombre del pod.
+    - "exec airflow celery worker -q default --celery-hostname $HOSTNAME"
+  
+  # Activamos KEDA nativamente desde el Chart
+  keda:
+    enabled: true
+    pollingInterval: 5      # Cada cuántos segundos KEDA revisa la cola
+    cooldownPeriod: 30      # Segundos que espera sin tareas antes de matar al worker
+    minReplicaCount: 0      # MAGIA: Si no hay DAGs corriendo, 0 workers activos
+    maxReplicaCount: 3      # Límite máximo para no saturar tu cluster K3d
+
+# ─────────────────────────────────────────────
+# 9. Scheduler
+# ─────────────────────────────────────────────
+scheduler:
+  replicas: 1
+
+# ─────────────────────────────────────────────
+# 10. Persistencia de DAGs y Logs
+# ─────────────────────────────────────────────
+dags:
+  persistence:
+    enabled: false
+  gitSync:
+    enabled: false
+
+logs:
+  persistence:
+    enabled: false
+
+# ─────────────────────────────────────────────
+# 11. Seguridad
+# ─────────────────────────────────────────────
+fernetKey: "zTX4Bg8pRVw0gD3L_nX9n4EbHNEFmJNhDYzQqCVzHYo="
+webserverSecretKey: "bmo-webserver-secret-2026"

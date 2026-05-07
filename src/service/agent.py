@@ -77,21 +77,34 @@ class AgentService:
         chain = prompt_template | self.model
 
         user_info = state.get("user_info") or {"name": "Usuario"}
-
-        messages = list(state["messages"])
-
-        # Si el prompt es viejo (no rag_v4), inyectamos el resumen como SystemMessage
-        # para que el asistente tenga el contexto aunque el template no use la variable global_summary.
         summary = state.get("summary", "")
+        
+        # 1. Preparar mensajes y sanitizar para evitar errores 400 de NVIDIA (Unterminated strings)
+        raw_messages = list(state["messages"])
+        sanitized_messages = []
+        for m in raw_messages:
+            content = m.content
+            if isinstance(content, str):
+                # FIX: Si un mensaje termina en \, NVIDIA NIM puede fallar con Unterminated String
+                if content.endswith("\\"):
+                    content += " "
+            sanitized_messages.append(m.copy(update={"content": content}))
+
+        # 2. Inyectar Resumen si el prompt es viejo
         if state.get("prompt_version") != "rag_v4" and summary:
-            messages = [SystemMessage(content=f"Resumen histórico de la conversación: {summary}")] + list(messages)
+            sanitized_messages = [SystemMessage(content=f"Resumen histórico de la conversación: {summary}")] + sanitized_messages
+
+        # 3. NUDGE: Si se acaba de usar save_note_to_knowledge_base, obligar al agente a mostrar el output completo
+        last_tool_msg = next((m for m in reversed(sanitized_messages) if getattr(m, "type", "") == "tool"), None)
+        if last_tool_msg and getattr(last_tool_msg, "name", "") == "save_note_to_knowledge_base":
+            sanitized_messages.append(SystemMessage(content="[SISTEMA]: Has guardado una nota. DEBES mostrar el contenido completo de lo que guardaste al usuario en tu respuesta para confirmar la acción."))
 
         response = await chain.ainvoke({
             "user_name": user_info.get("name", "Usuario"),
             "today": date.today().isoformat(),
             "global_summary": summary,
             "run_summaries": state.get("run_summaries", []),
-            "messages": messages
+            "messages": sanitized_messages
         }, config={"tags": ["agent_generation"]})
 
         # Para que el estado no acumule el mensaje temporal, solo devolvemos la respuesta de la AI
@@ -148,8 +161,25 @@ class AgentService:
         last_message = messages[-1]
 
         # Si la LLM decidió llamar a una herramienta
-        if last_message.tool_calls:
+        if getattr(last_message, "tool_calls", None):
             return Command(goto="tools")
+
+        # --- NUEVO: ESCUDO PROTECTOR PARA ERRORES 400/500 EN NVIDIA ---
+        # Si la llamada falló (ej: JSON roto por límite de tokens)
+        if getattr(last_message, "invalid_tool_calls", None):
+            retry_count = state.get("generate_retry_count", 0)
+            if retry_count < MAX_RETRIES:
+                logger.warning(f"Agent generated invalid tool calls. Retry {retry_count + 1}/{MAX_RETRIES}.")
+                nudge_msg = HumanMessage(content="[SISTEMA]: Tu llamada a la herramienta fue inválida o se cortó por exceder el límite de texto. Por favor, intenta de nuevo siendo más conciso en los parámetros.")
+                return Command(
+                    update={
+                        "generate_retry_count": retry_count + 1,
+                        # VITAL: Usamos RemoveMessage para borrar el mensaje corrupto del historial.
+                        # Así NVIDIA no intentará parsearlo en el siguiente turno y no tirará error 500.
+                        "messages": [RemoveMessage(id=last_message.id), nudge_msg]
+                    },
+                    goto="agent"
+                )
 
         # Si el agente generó contenido vacío (sin texto ni tool_calls)
         # puede suceder cuando no tiene instrucción clara o falla al sintetizar el contexto
@@ -167,7 +197,7 @@ class AgentService:
         # --- RECOVERY: Detectar si el modelo intentó llamar herramientas usando código (hallucinación) ---
         # "tool_code" o "default_api" o nombres de herramientas seguidos de paréntesis
         hallucinated_code = any(kw in msg_content for kw in ["tool_code", "default_api", f"{_RETRIEVER_TOOL_NAME}("])
-        if not last_message.tool_calls and hallucinated_code:
+        if not getattr(last_message, "tool_calls", None) and hallucinated_code:
             retry_count = state.get("generate_retry_count", 0)
             if retry_count < MAX_RETRIES:
                 logger.warning(f"Agent hallucinated tool code instead of native call. Retry {retry_count + 1}/{MAX_RETRIES}.")

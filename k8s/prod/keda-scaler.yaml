@@ -1,14 +1,15 @@
 apiVersion: keda.sh/v1alpha1
 kind: TriggerAuthentication
 metadata:
-  name: keda-rabbitmq-auth
+  name: keda-redis-auth
   namespace: personal-ai
 spec:
   secretTargetRef:
   - parameter: host
     name: app-secrets
-    key: CELERY_BROKER_URL
+    key: REDIS_URL
 ---
+# Scaler para el Worker de la App (RabbitMQ/Celery)
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
@@ -25,54 +26,28 @@ spec:
       queueName: ingest_q
       queueLength: "5"
     authenticationRef:
-      name: keda-rabbitmq-auth
+      name: keda-rabbitmq-auth # Asumo que este auth existe para RabbitMQ
 
 ---
-# ─── KEDA — Kafka Consumer Autoscaler (Aiven) ────────────────────────────────
-# Escala kafka-consumer-deployment según el consumer lag del topic raw-documents.
-# lag threshold = 5 significa: por cada 5 mensajes pendientes → 1 replica adicional
+# ─── KEDA — Airflow Worker Autoscaler (Redis) ────────────────────────────────
+# Escala el worker de Airflow según la profundidad de la cola de Celery en Redis.
+# Monitorea la lista 'default' de Redis que usa Celery por defecto.
 
-apiVersion: keda.sh/v1alpha1
-kind: TriggerAuthentication
-metadata:
-  name: keda-kafka-auth
-  namespace: personal-ai
-spec:
-  secretTargetRef:
-  - parameter: username
-    name: app-secrets
-    key: KAFKA_SASL_USERNAME     # usuario de Aiven
-  - parameter: password
-    name: app-secrets
-    key: KAFKA_SASL_PASSWORD     # usuario de Aiven
-  - parameter: ca
-    name: kafka-ca-cert
-    key: ca.pem                  # certificado CA de Aiven
-
----
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
 metadata:
-  name: kafka-consumer-scaler
+  name: airflow-worker-scaler
   namespace: personal-ai
 spec:
   scaleTargetRef:
-    name: kafka-consumer-deployment
-  minReplicaCount: 0      # escala a 0 si no hay mensajes
-  maxReplicaCount: 2      # máximo 2 replicas para no saturar procesos de fondo
-  pollingInterval: 15     # chequear lag cada 15s
-  cooldownPeriod: 60      # esperar 60s antes de escalar a 0
+    name: airflow-worker
+  minReplicaCount: 0      # Escala a 0 si no hay tareas
+  maxReplicaCount: 2      # Máximo 5 workers
+  pollingInterval: 30
+  cooldownPeriod: 300
   triggers:
-  - type: apache-kafka    # <-- CAMBIO A SCALER EXPERIMENTAL
+  - type: redis
     metadata:
-      # KEDA va a buscar esta variable en el bloque `env` de tu deployment
-      bootstrapServersFromEnv: "KAFKA_BOOTSTRAP_SERVERS"
-      consumerGroup: "document-ingestor-v4"
-      topic: "raw-documents"
-      lagThreshold: "5"
-      offsetResetPolicy: "earliest"  # <-- VITAL PARA QUE ESCALE A CERO
-      sasl: "scram_sha256"
-      tls: "enable"
-      allowInsecureSkipVerify: "true" # <-- EVITA EL ERROR DE CERTIFICADO (Aiven)
-    authenticationRef:
-      name: keda-kafka-auth
+      addressFromEnv: REDIS_URL
+      listName: "default"   # Cola por defecto de Airflow Celery
+      listLength: "5"       # 1 worker por cada 5 tareas pendientes

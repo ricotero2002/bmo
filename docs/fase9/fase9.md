@@ -142,7 +142,6 @@ Excluido:
 
 8. Reporte de ingesta.
 9. Dashboards y BI.
-10. Migracion embeddings.
 
 ## Notas Operativas
 

@@ -39,6 +39,27 @@ spec:
             name: api-service
             port:
               number: 80
+      - path: /airflow
+        pathType: Prefix
+        backend:
+          service:
+            name: airflow-webserver-svc
+            port:
+              number: 8080
+      - path: /superset
+        pathType: Prefix
+        backend:
+          service:
+            name: superset-svc
+            port:
+              number: 8088
+      - path: /spark-ui
+        pathType: Prefix
+        backend:
+          service:
+            name: spark-thrift-svc
+            port:
+              number: 4040
 
 ---
 # 4. Deployment de FastAPI

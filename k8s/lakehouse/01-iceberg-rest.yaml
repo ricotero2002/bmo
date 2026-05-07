@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iceberg-rest
+  namespace: personal-ai
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: iceberg-rest
+  template:
+    metadata:
+      labels:
+        app: iceberg-rest
+    spec:
+      containers:
+      - name: iceberg-rest
+        image: tabulario/iceberg-rest:latest
+        ports:
+        - containerPort: 8181
+        envFrom:
+        - secretRef:
+            name: app-secrets
+        env:
+        - name: CATALOG_CATALOG__IMPL
+          value: "org.apache.iceberg.jdbc.JdbcCatalog"
+        - name: CATALOG_IO__IMPL
+          value: "org.apache.iceberg.aws.s3.S3FileIO"
+        - name: CATALOG_S3_ENDPOINT
+          value: "https://$(OCI_NAMESPACE).compat.objectstorage.$(OCI_REGION).oraclecloud.com"
+        - name: CATALOG_S3_PATH__STYLE__ACCESS
+          value: "true"
+        - name: CATALOG_WAREHOUSE
+          value: "s3://$(OCI_BUCKET_NAME)/warehouse/"
+        - name: AWS_ACCESS_KEY_ID
+          value: "$(OCI_ACCESS_KEY)"
+        - name: AWS_SECRET_ACCESS_KEY
+          value: "$(OCI_SECRET_KEY)"
+        - name: AWS_REGION
+          value: "$(OCI_REGION)"
+        - name: AWS_EC2_METADATA_DISABLED
+          value: "true"
+        # --- AQUÍ ESTÁ EL TRUCO PARA JDBC ---
+        # Aiven siempre te da el host, puerto, user y pass en variables separadas en Infisical.
+        # Construimos la URL limpia sin credenciales inyectadas en el string:
+        - name: CATALOG_URI
+          value: "jdbc:postgresql://$(AIVEN_PG_HOST):23645/$(AIVEN_PG_DB)?sslmode=require"
+        # Pasamos las credenciales a Java explícitamente mediante las variables que el servidor entiende:
+        - name: CATALOG_JDBC_USER
+          value: "$(AIVEN_PG_USER)"
+        - name: CATALOG_JDBC_PASSWORD
+          value: "$(AIVEN_PG_PASSWORD)"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: iceberg-rest-svc
+  namespace: personal-ai
+spec:
+  selector:
+    app: iceberg-rest
+  ports:
+  - port: 8181
+    targetPort: 8181

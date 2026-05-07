@@ -1,4 +1,5 @@
 import logging
+import re
 import uuid
 from typing import List, Optional, Any, Type
 from deepeval.models.base_model import DeepEvalBaseLLM
@@ -15,32 +16,38 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 logger = logging.getLogger(__name__)
 load_dotenv(override=True)
 
-class GeminiJudge(DeepEvalBaseLLM):
+class NvidiaJudge(DeepEvalBaseLLM):
     """
-    Custom DeepEval LLM wrapper using the project's LLMFactory (Gemini-based).
+    Custom DeepEval LLM wrapper using the project's LLMFactory (Nvidia NIM-based).
     Ensures evaluation runs with the same models as the production system.
     """
-    def __init__(self, model_name: str = "Gemini-2.5-Flash"):
+    def __init__(self, model_name: str = "Nvidia-Judge-Model"):
         self.model_name = model_name
         # Forzamos temperature=0 para evitar que el juez alucine formatos raros
-        self.model = LLMFactory.create_lite().with_config({"temperature": 0.0})
+        self.model = LLMFactory.create_judge().with_config({"temperature": 0.0})
         
     def _clean_json(self, text: str) -> str:
-        """Limpia los bloques de markdown que a veces Gemini añade al JSON"""
+        """
+        Extrae de forma robusta solo el bloque JSON (objeto o array), 
+        ignorando cualquier charla adicional (babbling) del modelo.
+        """
         text = text.strip()
-        if text.startswith("```json"):
-            text = text[7:]
-        elif text.startswith("```"):
-            text = text[3:]
-        if text.endswith("```"):
-            text = text[:-3]
-        return text.strip()
+        
+        # Busca todo lo que esté entre el primer { o [ y el último } o ]
+        match = re.search(r'(\{.*\}|\[.*\])', text, re.DOTALL)
+        
+        if match:
+            clean_text = match.group(1)
+            # Limpiamos posibles comillas triples sueltas adentro del match si las hubo
+            clean_text = clean_text.replace("```json", "").replace("```", "")
+            return clean_text.strip()
+            
+        return text
 
     def load_model(self):
         return self.model
 
-    # --- NUEVO: Decorador de reintento para sobrevivir a 503s de Google ---
-    @retry(stop=stop_after_attempt(4), wait=wait_exponential(multiplier=2, min=2, max=15))
+    # ELIMINAMOS los @retry de aquí
     def generate(self, prompt: str, schema: Optional[Type] = None, *args, **kwargs) -> Any:
         res = self.model.invoke(prompt)
         cleaned_content = self._clean_json(res.content)
@@ -54,7 +61,7 @@ class GeminiJudge(DeepEvalBaseLLM):
         
         return cleaned_content
 
-    @retry(stop=stop_after_attempt(4), wait=wait_exponential(multiplier=2, min=2, max=15))
+    # ELIMINAMOS los @retry de aquí también
     async def a_generate(self, prompt: str, schema: Optional[Type] = None, *args, **kwargs) -> Any:
         res = await self.model.ainvoke(prompt)
         cleaned_content = self._clean_json(res.content)
