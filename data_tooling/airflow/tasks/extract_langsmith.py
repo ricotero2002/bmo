@@ -1,6 +1,6 @@
 from langsmith import Client
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 import os
 import argparse
@@ -35,7 +35,7 @@ def fetch_yesterday_data(ds, project_name=None, start_time_custom=None, end_time
         logger.info(f"🕒 Usando start_time personalizado: {start_time_custom}")
         start_time = datetime.fromisoformat(str(start_time_custom).replace("Z", "+00:00"))
     else:
-        start_time = datetime.strptime(ds, "%Y-%m-%d")
+        start_time = datetime.strptime(ds, "%Y-%m-%d").replace(tzinfo=timezone.utc)
 
     if end_time_custom and str(end_time_custom).lower() != "none":
         logger.info(f"🕒 Usando end_time personalizado: {end_time_custom}")
@@ -66,14 +66,10 @@ def fetch_yesterday_data(ds, project_name=None, start_time_custom=None, end_time
         error_msg = str(run.error) if run.error else None
         
         # Extraer herramientas usadas (child runs de tipo 'tool')
-        # Nota: Esto puede ser lento si hay miles de runs. 
-        # En una fase posterior se podría optimizar trayendo todos los runs y agrupando en Spark.
-        try:
-            child_runs = list(client.list_runs(project_name=project_name, parent_run_id=run.id))
-            tools_used = [child.name for child in child_runs if getattr(child, 'run_type', '') == "tool"]
-        except Exception as e:
-            logger.warning(f"Error al obtener child runs para {run.id}: {e}")
-            tools_used = []
+        # OPTIMIZACIÓN: Se ha deshabilitado esta llamada por run para evitar el problema N+1
+        # que saturaba la API y causaba timeout (Warm shutdown) en el worker de Celery.
+        # Deberá procesarse en batch en una etapa posterior con Spark.
+        tools_used = []
 
         chunk_data.append({
             "run_id": str(run.id),

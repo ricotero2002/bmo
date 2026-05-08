@@ -20,7 +20,8 @@ class DataLakeProvider:
         self.storage_options = {
             "key": self.key,
             "secret": self.secret,
-            "client_kwargs": {"endpoint_url": self.endpoint}
+            "client_kwargs": {"endpoint_url": self.endpoint},
+            "config_kwargs": {"s3": {"addressing_style": "path"}}
         }
         
         logger.info(f"DataLakeProvider inicializado con endpoint: {self.endpoint}")
@@ -30,12 +31,26 @@ class DataLakeProvider:
         Escribe un DataFrame como un archivo Parquet en una ruta particionada por fecha.
         Ej: s3://bronze/langsmith_raw/date=2026-04-23/chunk_0.parquet
         """
+        import io
+        import fsspec
+        
         base_path = f"s3://{zone}/{table_name}/date={partition_date}"
         file_path = f"{base_path}/chunk_{chunk_idx}.parquet"
         
         logger.info(f"Guardando chunk {chunk_idx} en {file_path} ({len(df)} filas)")
         
-        df.to_parquet(file_path, storage_options=self.storage_options, index=False)
+        # FIX para Oracle Cloud Object Storage (OCI):
+        # OCI no soporta 'Transfer-Encoding: chunked' en PutObject.
+        # Al escribir en un buffer de memoria primero, s3fs/botocore puede calcular 
+        # el Content-Length automáticamente antes de enviar la petición.
+        buffer = io.BytesIO()
+        df.to_parquet(buffer, index=False)
+        buffer.seek(0)
+        
+        fs = fsspec.filesystem("s3", **self.storage_options)
+        with fs.open(file_path, "wb") as f:
+            f.write(buffer.getvalue())
+            
         return file_path
 
     def list_partition_files(self, zone: str, table_name: str, partition_date: str):

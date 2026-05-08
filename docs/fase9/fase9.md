@@ -91,7 +91,7 @@ Excluido:
 ### Frente G - Metricas y BI
 
 - Grafana conectado a Postgres analytics con usuario read-only.
-- Opcion Metabase para analitica self-service y consumo de negocio.
+- Metabase para analitica self-service y consumo de negocio.
 
 ### Frente H - Migracion de embeddings
 

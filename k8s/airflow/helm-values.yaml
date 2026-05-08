@@ -58,6 +58,10 @@ env:
     value: "False"
   - name: AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION
     value: "True"
+  - name: AIRFLOW__WEBSERVER__SESSION_BACKEND
+    value: "securecookie"
+  - name: AIRFLOW__CORE__HOSTNAME_CALLABLE
+    value: "airflow.utils.net.get_host_ip_address"
   - name: AIRFLOW__WEBSERVER__BASE_URL
     value: "http://localhost:8081/airflow"
   - name: AIRFLOW__WEBSERVER__WEB_SERVER_MASTER_TIMEOUT
@@ -69,19 +73,25 @@ env:
   - name: LAKEHOUSE_S3_ENDPOINT
     value: "https://$(OCI_NAMESPACE).compat.objectstorage.$(OCI_REGION).oraclecloud.com"
   - name: AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_SIZE
-    value: "5"
+    value: "10"
   - name: AIRFLOW__DATABASE__SQL_ALCHEMY_MAX_OVERFLOW
-    value: "2"
+    value: "5"
   - name: AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_RECYCLE
     value: "240"
   - name: AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_PRE_PING
     value: "True"
   - name: AIRFLOW__WEBSERVER__WORKERS
-    value: "1"
+    value: "2"
   - name: AIRFLOW__CELERY__BROKER_TRANSPORT_OPTIONS
     value: '{"visibility_timeout": 3600}'
   - name: AIRFLOW__CELERY__OPERATION_TIMEOUT
     value: "10"
+  - name: AIRFLOW__LOGGING__REMOTE_LOGGING
+    value: "True"
+  - name: AIRFLOW__LOGGING__REMOTE_BASE_LOG_FOLDER
+    value: "s3://bronze/airflow-logs"
+  - name: AIRFLOW__LOGGING__REMOTE_LOG_CONN_ID
+    value: "oci_s3_conn"
 
 extraEnv: |
   - name: CELERY_BROKER_URL
@@ -94,6 +104,11 @@ extraEnv: |
       secretKeyRef:
         name: app-secrets
         key: AIRFLOW__CELERY__RESULT_BACKEND
+  # Inyectamos la IP real del pod
+  - name: MY_POD_IP
+    valueFrom:
+      fieldRef:
+        fieldPath: status.podIP
 
 # ─────────────────────────────────────────────
 # 6. Ingress
@@ -147,9 +162,12 @@ webserver:
     periodSeconds: 10
     timeoutSeconds: 20
   resources:
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
     requests:
       cpu: "500m"
-      memory: "750Mi"
+      memory: "512Mi"
 
 # ─────────────────────────────────────────────
 # 8. Workers
@@ -158,13 +176,14 @@ workers:
   # Opcional: puedes dejar replicas omitido o en 0, KEDA toma el control
   # Desactivamos el PVC aislado de Celery para que los logs fluyan al Webserver
   persistence:
-    enabled: false
+    enabled: true
+    size: 2Gi
 
   args:
     - "bash"
     - "-c"
-    # Forzamos el argumento usando $HOSTNAME que K8s inyecta automáticamente con el nombre del pod.
-    - "exec airflow celery worker -q default --celery-hostname $HOSTNAME"
+    # Usar la IP evita el crasheo de NoneType y elimina el problema de DNS
+    - "exec airflow celery worker -q default --celery-hostname $MY_POD_IP"
   
   replicas: 1
   # Activamos KEDA nativamente desde el Chart

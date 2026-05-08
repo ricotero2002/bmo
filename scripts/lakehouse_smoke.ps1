@@ -1,12 +1,26 @@
 param(
     [string]$ComposeFile = "docker/docker-compose.yml",
-    [string]$MinioUser = "lakehouse",
-    [string]$MinioPassword = "lakehouse123",
     [bool]$InsertSample = $true,
     [int]$InitTimeoutSeconds = 90
 )
 
 $ErrorActionPreference = "Stop"
+
+if (Test-Path ".env") {
+    Get-Content ".env" | Foreach-Object {
+        if ($_ -match '^(?!#)([^=]+)=(.*)$') {
+            [Environment]::SetEnvironmentVariable($matches[1], $matches[2])
+        }
+    }
+}
+
+$OciAccessKey = [Environment]::GetEnvironmentVariable("OCI_ACCESS_KEY")
+$OciSecretKey = [Environment]::GetEnvironmentVariable("OCI_SECRET_KEY")
+$OciNamespace = [Environment]::GetEnvironmentVariable("OCI_NAMESPACE")
+$OciRegion = [Environment]::GetEnvironmentVariable("OCI_REGION")
+$OciBucketName = [Environment]::GetEnvironmentVariable("OCI_BUCKET_NAME")
+
+$OciEndpoint = "https://$OciNamespace.compat.objectstorage.$OciRegion.oraclecloud.com"
 
 function Run-Checked {
     param(
@@ -26,23 +40,24 @@ function Invoke-SparkSql {
     param([Parameter(Mandatory = $true)][string]$Sql)
 
     $args = @(
-        "exec", "bmo_lakehouse_spark", "spark-sql",
+        "exec", "-i", "-n", "personal-ai", "deploy/spark-thrift", "--", "/opt/spark/bin/spark-sql",
         "--driver-memory", "512M",
         "--conf", "spark.sql.defaultCatalog=lakehouse",
         "--conf", "spark.sql.catalog.lakehouse=org.apache.iceberg.spark.SparkCatalog",
         "--conf", "spark.sql.catalog.lakehouse.type=rest",
-        "--conf", "spark.sql.catalog.lakehouse.uri=http://rest:8181",
-        "--conf", "spark.sql.catalog.lakehouse.warehouse=s3://warehouse/",
+        "--conf", "spark.sql.catalog.lakehouse.uri=http://iceberg-rest-svc.personal-ai.svc.cluster.local:8181",
+        "--conf", "spark.sql.catalog.lakehouse.warehouse=s3://$OciBucketName/",
         "--conf", "spark.sql.catalog.lakehouse.io-impl=org.apache.iceberg.aws.s3.S3FileIO",
-        "--conf", "spark.sql.catalog.lakehouse.s3.endpoint=http://minio:9000",
+        "--conf", "spark.sql.catalog.lakehouse.s3.endpoint=$OciEndpoint",
+        "--conf", "spark.sql.catalog.lakehouse.client.region=$OciRegion",
         "--conf", "spark.sql.catalog.lakehouse.s3.path-style-access=true",
-        "--conf", "spark.sql.catalog.lakehouse.s3.access-key-id=$MinioUser",
-        "--conf", "spark.sql.catalog.lakehouse.s3.secret-access-key=$MinioPassword",
-        "--conf", "spark.hadoop.fs.s3a.endpoint=http://minio:9000",
-        "--conf", "spark.hadoop.fs.s3a.access.key=$MinioUser",
-        "--conf", "spark.hadoop.fs.s3a.secret.key=$MinioPassword",
+        "--conf", "spark.sql.catalog.lakehouse.s3.access-key-id=$OciAccessKey",
+        "--conf", "spark.sql.catalog.lakehouse.s3.secret-access-key=$OciSecretKey",
+        "--conf", "spark.hadoop.fs.s3a.endpoint=$OciEndpoint",
+        "--conf", "spark.hadoop.fs.s3a.access.key=$OciAccessKey",
+        "--conf", "spark.hadoop.fs.s3a.secret.key=$OciSecretKey",
         "--conf", "spark.hadoop.fs.s3a.path.style.access=true",
-        "--conf", "spark.hadoop.fs.s3a.connection.ssl.enabled=false",
+        "--conf", "spark.hadoop.fs.s3a.connection.ssl.enabled=true",
         "-e", $Sql
     )
 
@@ -51,7 +66,7 @@ function Invoke-SparkSql {
         # spark-sql puede escribir WARN en stderr aunque el comando sea exitoso.
         # Validamos errores reales usando exit code.
         $ErrorActionPreference = "Continue"
-        $output = & docker @args 2>&1
+        $output = & kubectl @args 2>&1
         $exitCode = $LASTEXITCODE
     }
     finally {
@@ -65,52 +80,7 @@ function Invoke-SparkSql {
 }
 
 Write-Host "== Lakehouse smoke test ==" -ForegroundColor Yellow
-Write-Host "Compose file: $ComposeFile"
-
-Run-Checked -Name "Compose up" -Command {
-    docker compose -f $ComposeFile up -d
-}
-
-Run-Checked -Name "Compose ps" -Command {
-    docker compose -f $ComposeFile ps
-}
-
-$deadline = (Get-Date).AddSeconds($InitTimeoutSeconds)
-$minioInitState = ""
-do {
-    $minioInitState = (& docker inspect -f "{{.State.Status}}|{{.State.ExitCode}}" bmo_lakehouse_minio_init 2>&1 | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0) {
-        throw "No se pudo inspeccionar bmo_lakehouse_minio_init: $minioInitState"
-    }
-
-    if ($minioInitState -eq "exited|0") {
-        break
-    }
-
-    if ((Get-Date) -lt $deadline) {
-        Start-Sleep -Seconds 3
-    }
-} while ((Get-Date) -lt $deadline)
-
-if ($minioInitState -ne "exited|0") {
-    throw "bmo_lakehouse_minio_init no finalizo en exited|0 dentro de $InitTimeoutSeconds s. Estado actual: $minioInitState"
-}
-Write-Host "[OK ] minio-init finalizo correctamente: $minioInitState" -ForegroundColor Green
-
-$initLogs = (& cmd /c "docker logs bmo_lakehouse_minio_init 2>&1" | Out-String)
-if ($initLogs -notmatch "Buckets bronze/silver/gold/warehouse creados") {
-    throw "No se encontro confirmacion de creacion de buckets en logs de minio-init"
-}
-Write-Host "[OK ] Buckets base detectados en logs de minio-init" -ForegroundColor Green
-
-$restState = (& docker inspect -f "{{.State.Status}}" bmo_lakehouse_rest 2>&1 | Out-String).Trim()
-if ($LASTEXITCODE -ne 0) {
-    throw "No se pudo inspeccionar bmo_lakehouse_rest: $restState"
-}
-if ($restState -ne "running") {
-    throw "bmo_lakehouse_rest no esta running. Estado actual: $restState"
-}
-Write-Host "[OK ] Iceberg REST catalog en estado running" -ForegroundColor Green
+Write-Host "Verificando base de datos a traves de Kubernetes..." -ForegroundColor Cyan
 
 [void](Invoke-SparkSql -Sql "CREATE NAMESPACE IF NOT EXISTS lakehouse.bronze;")
 [void](Invoke-SparkSql -Sql "CREATE NAMESPACE IF NOT EXISTS lakehouse.silver;")
@@ -155,7 +125,7 @@ VALUES
     Write-Host "[OK ] Metadata de snapshots accesible" -ForegroundColor Green
 
     $filesOut = Invoke-SparkSql -Sql "SELECT file_path, record_count FROM lakehouse.bronze.agent_events.files LIMIT 5"
-    if ($filesOut -notmatch "s3://warehouse/|s3a://warehouse/|\.parquet") {
+    if ($filesOut -notmatch "s3://$OciBucketName/|\.parquet") {
         throw "No se pudo validar metadata de archivos. Salida:`n$filesOut"
     }
     Write-Host "[OK ] Metadata de archivos accesible" -ForegroundColor Green

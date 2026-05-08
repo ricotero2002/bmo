@@ -39,13 +39,6 @@ spec:
             name: api-service
             port:
               number: 80
-      - path: /superset
-        pathType: Prefix
-        backend:
-          service:
-            name: superset-svc
-            port:
-              number: 8088
       - path: /spark-ui
         pathType: Prefix
         backend:
@@ -53,7 +46,6 @@ spec:
             name: spark-thrift-svc
             port:
               number: 4040
-
 ---
 # 4. Deployment de FastAPI
 apiVersion: apps/v1
