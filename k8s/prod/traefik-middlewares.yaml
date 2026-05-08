@@ -1,0 +1,9 @@
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: airflow-strip-prefix
+  namespace: personal-ai
+spec:
+  stripPrefix:
+    prefixes:
+      - /airflow

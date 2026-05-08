@@ -12,7 +12,7 @@ config:
 images:
   airflow:
     repository: personal_ai_airflow
-    tag: 2.10.5
+    tag: latest
     pullPolicy: Never
 
 # ─────────────────────────────────────────────
@@ -37,6 +37,9 @@ data:
 redis:
   enabled: false
 
+rabbitmq:
+  enabled: false
+
 # ─────────────────────────────────────────────
 # 5. Variables de entorno (Limpio)
 # ─────────────────────────────────────────────
@@ -48,12 +51,15 @@ extraEnvFrom: |-
 # Esto obliga a Airflow a leer AIRFLOW__CELERY__BROKER_URL directamente de 'app-secrets'.
 enableBuiltInSecretEnvVars:
   AIRFLOW__CELERY__BROKER_URL: false
+  AIRFLOW__CELERY__RESULT_BACKEND: false
 
 env:
   - name: AIRFLOW__CORE__LOAD_EXAMPLES
     value: "False"
   - name: AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION
     value: "True"
+  - name: AIRFLOW__WEBSERVER__BASE_URL
+    value: "http://localhost:8081/airflow"
   - name: AIRFLOW__WEBSERVER__WEB_SERVER_MASTER_TIMEOUT
     value: "300"
   - name: AIRFLOW__CELERY__WORKER_CONCURRENCY
@@ -63,13 +69,31 @@ env:
   - name: LAKEHOUSE_S3_ENDPOINT
     value: "https://$(OCI_NAMESPACE).compat.objectstorage.$(OCI_REGION).oraclecloud.com"
   - name: AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_SIZE
-    value: "2"
+    value: "5"
   - name: AIRFLOW__DATABASE__SQL_ALCHEMY_MAX_OVERFLOW
-    value: "1"
-  - name: AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_RECYCLE
-    value: "1800"
-  - name: AIRFLOW__WEBSERVER__WORKERS
     value: "2"
+  - name: AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_RECYCLE
+    value: "240"
+  - name: AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_PRE_PING
+    value: "True"
+  - name: AIRFLOW__WEBSERVER__WORKERS
+    value: "1"
+  - name: AIRFLOW__CELERY__BROKER_TRANSPORT_OPTIONS
+    value: '{"visibility_timeout": 3600}'
+  - name: AIRFLOW__CELERY__OPERATION_TIMEOUT
+    value: "10"
+
+extraEnv: |
+  - name: CELERY_BROKER_URL
+    valueFrom:
+      secretKeyRef:
+        name: app-secrets
+        key: AIRFLOW__CELERY__BROKER_URL
+  - name: CELERY_RESULT_BACKEND
+    valueFrom:
+      secretKeyRef:
+        name: app-secrets
+        key: AIRFLOW__CELERY__RESULT_BACKEND
 
 # ─────────────────────────────────────────────
 # 6. Ingress
@@ -85,6 +109,7 @@ ingress:
     annotations:
       ingress.kubernetes.io/ssl-redirect: "false"
       traefik.ingress.kubernetes.io/router.entrypoints: web
+      traefik.ingress.kubernetes.io/router.middlewares: personal-ai-airflow-strip-prefix@kubernetescrd
 
 # ─────────────────────────────────────────────
 # 7. Webserver & Admin User
@@ -110,39 +135,73 @@ webserver:
     initialDelaySeconds: 60
     failureThreshold: 30
     periodSeconds: 10
+    timeoutSeconds: 20
   livenessProbe:
     initialDelaySeconds: 60
     failureThreshold: 10
     periodSeconds: 10
+    timeoutSeconds: 20
   readinessProbe:
     initialDelaySeconds: 60
     failureThreshold: 10
     periodSeconds: 10
+    timeoutSeconds: 20
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "750Mi"
 
 # ─────────────────────────────────────────────
 # 8. Workers
 # ─────────────────────────────────────────────
 workers:
   # Opcional: puedes dejar replicas omitido o en 0, KEDA toma el control
+  # Desactivamos el PVC aislado de Celery para que los logs fluyan al Webserver
+  persistence:
+    enabled: false
+
   args:
     - "bash"
     - "-c"
     # Forzamos el argumento usando $HOSTNAME que K8s inyecta automáticamente con el nombre del pod.
     - "exec airflow celery worker -q default --celery-hostname $HOSTNAME"
   
+  replicas: 1
   # Activamos KEDA nativamente desde el Chart
   keda:
-    enabled: true
-    pollingInterval: 5      # Cada cuántos segundos KEDA revisa la cola
-    cooldownPeriod: 30      # Segundos que espera sin tareas antes de matar al worker
-    minReplicaCount: 0      # MAGIA: Si no hay DAGs corriendo, 0 workers activos
-    maxReplicaCount: 3      # Límite máximo para no saturar tu cluster K3d
+    #enabled: true
+    #pollingInterval: 5      # Cada cuántos segundos KEDA revisa la cola
+    #cooldownPeriod: 30      # Segundos que espera sin tareas antes de matar al worker
+    #minReplicaCount: 0      # MAGIA: Si no hay DAGs corriendo, 0 workers activos
+    #maxReplicaCount: 2      # Límite máximo para no saturar tu cluster K3d
+    enabled: false
+  resources:
+    requests:
+      cpu: "1000m"
+      memory: "1.5Gi"
+    limits:
+      cpu: "1500m"
+      memory: "2Gi"
+
+# ─────────────────────────────────────────────
+# 9. Tuning para tareas pesadas
+# ─────────────────────────────────────────────
+config:
+  scheduler:
+    scheduler_zombie_task_threshold: 3600  # Aumentar a 1 hora para tareas largas de LangSmith
+    job_heartbeat_sec: 30                 # Latido cada 30 seg
+  core:
+    dag_file_processor_timeout: 300
 
 # ─────────────────────────────────────────────
 # 9. Scheduler
 # ─────────────────────────────────────────────
 scheduler:
   replicas: 1
+  resources:
+    requests:
+      cpu: "750m"
+      memory: "750Mi"
 
 # ─────────────────────────────────────────────
 # 10. Persistencia de DAGs y Logs
@@ -162,3 +221,21 @@ logs:
 # ─────────────────────────────────────────────
 fernetKey: "zTX4Bg8pRVw0gD3L_nX9n4EbHNEFmJNhDYzQqCVzHYo="
 webserverSecretKey: "bmo-webserver-secret-2026"
+
+# ─────────────────────────────────────────────
+# 12. PgBouncer
+# ─────────────────────────────────────────────
+pgbouncer:
+  enabled: true
+  
+  # El número máximo de conexiones que Airflow puede hacer hacia PgBouncer
+  maxClientConn: 100 
+  # El número máximo de conexiones reales que PgBouncer hará hacia tu DB externa (Aiven)
+  metadataPoolSize: 10 
+  # El número máximo de conexiones para la base de datos de resultados
+  resultBackendPoolSize: 5 
+
+  # Como usas una DB externa, PgBouncer necesita estos secretos personalizados:
+  configSecretName: airflow-pgbouncer-config
+  metricsExporterSidecar:
+    statsSecretName: airflow-pgbouncer-stats

@@ -30,7 +30,7 @@ for root in possible_roots:
 
 os.environ.setdefault("APP_ENV", "production")
 
-API_URL = os.getenv("BMO_API_URL", "http://host.docker.internal:8000")
+API_URL = os.getenv("BMO_API_URL", "http://api-service")
 INTERNAL_API_KEY = os.getenv("AIRFLOW_INTERNAL_API_KEY", "")
 NOTION_RATE_LIMIT_SLEEP = 0.35  # 3 req/s max según la API de Notion
 

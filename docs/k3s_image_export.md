@@ -46,7 +46,7 @@ spec:
     imagePullPolicy: Never  # <--- VITAL
 ```
 
-helm upgrade bmo-airflow apache-airflow/airflow --version 1.16.0 -n personal-ai -f k8s/airflow/helm-values.yaml
+helm upgrade --install bmo-airflow apache-airflow/airflow --version 1.16.0 -n personal-ai -f k8s/airflow/helm-values.yaml
 
 # Reiniciar Deployments
 kubectl rollout restart deployment/bmo-airflow-scheduler -n personal-ai

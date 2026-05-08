@@ -116,6 +116,8 @@ kubectl logs -n personal-ai -l app=bmo-airflow-worker --follow
 kubectl logs -n personal-ai -l app=bmo-airflow-webserver --follow
 
 
+helm upgrade --install bmo-airflow https://github.com/apache/airflow/releases/download/helm-chart-1.16.0/airflow-1.16.0.tgz --namespace personal-ai -f k8s/airflow/helm-values.yaml
+
 helm install bmo-airflow apache-airflow/airflow -n personal-ai -f k8s/airflow/helm-values.yaml --timeout 10m
 # Ver logs del Worker
 kubectl logs -n personal-ai -l app=worker --follow

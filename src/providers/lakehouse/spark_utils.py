@@ -12,8 +12,8 @@ def get_iceberg_spark_session(app_name: str) -> SparkSession:
     """
     minio_user = os.getenv("MINIO_ROOT_USER", "lakehouse")
     minio_password = os.getenv("MINIO_ROOT_PASSWORD", "lakehouse123")
-    rest_uri = os.getenv("LAKEHOUSE_REST_URI", "http://host.docker.internal:8181")
-    s3_endpoint = os.getenv("LAKEHOUSE_S3_ENDPOINT", "http://host.docker.internal:9000")
+    rest_uri = os.getenv("LAKEHOUSE_REST_URI", "http://iceberg-rest-svc:8181")
+    s3_endpoint = os.getenv("LAKEHOUSE_S3_ENDPOINT", "http://minio-svc:9000")
     aws_region = os.getenv("AWS_REGION", "us-east-1")
 
     logger.info(f"Creando SparkSession '{app_name}' con Iceberg REST en {rest_uri}")

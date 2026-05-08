@@ -12,5 +12,5 @@ spec:
   - type: rabbitmq
     metadata:
       queueName: ingest_q  # <--- CAMBIA ESTO (antes decía 'celery')
-      host: amqp://guest:guest@172.21.0.1:5672/
+      host: amqp://hcludblm:LPmEifokFM24KyyxMdWBG0drQUqJlQQs@leopard.lmq.cloudamqp.com:5672/hcludblm
       queueLength: "5" # Cada 5 mensajes encolados, pide iniciar un Pod adicional

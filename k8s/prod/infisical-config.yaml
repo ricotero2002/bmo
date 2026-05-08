@@ -26,3 +26,6 @@ spec:
     - secretName: app-secrets
       secretNamespace: observability
       creationPolicy: "Orphan"
+    - secretName: airflow-pgbouncer-config
+      secretNamespace: personal-ai
+      creationPolicy: "Orphan"

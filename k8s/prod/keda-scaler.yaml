@@ -9,6 +9,17 @@ spec:
     name: app-secrets
     key: REDIS_URL
 ---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: keda-rabbitmq-auth
+  namespace: personal-ai
+spec:
+  secretTargetRef:
+  - parameter: host
+    name: app-secrets
+    key: CELERY_BROKER_URL
+---
 # Scaler para el Worker de la App (RabbitMQ/Celery)
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
@@ -27,27 +38,3 @@ spec:
       queueLength: "5"
     authenticationRef:
       name: keda-rabbitmq-auth # Asumo que este auth existe para RabbitMQ
-
----
-# ─── KEDA — Airflow Worker Autoscaler (Redis) ────────────────────────────────
-# Escala el worker de Airflow según la profundidad de la cola de Celery en Redis.
-# Monitorea la lista 'default' de Redis que usa Celery por defecto.
-
-apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
-metadata:
-  name: airflow-worker-scaler
-  namespace: personal-ai
-spec:
-  scaleTargetRef:
-    name: airflow-worker
-  minReplicaCount: 0      # Escala a 0 si no hay tareas
-  maxReplicaCount: 2      # Máximo 5 workers
-  pollingInterval: 30
-  cooldownPeriod: 300
-  triggers:
-  - type: redis
-    metadata:
-      addressFromEnv: REDIS_URL
-      listName: "default"   # Cola por defecto de Airflow Celery
-      listLength: "5"       # 1 worker por cada 5 tareas pendientes
