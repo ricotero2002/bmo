@@ -87,7 +87,7 @@ env:
   - name: AIRFLOW__CELERY__OPERATION_TIMEOUT
     value: "10"
   - name: AIRFLOW__LOGGING__REMOTE_LOGGING
-    value: "True"
+    value: "False"
   - name: AIRFLOW__LOGGING__REMOTE_BASE_LOG_FOLDER
     value: "s3://bronze/airflow-logs"
   - name: AIRFLOW__LOGGING__REMOTE_LOG_CONN_ID
@@ -186,21 +186,25 @@ workers:
     - "exec airflow celery worker -q default --celery-hostname $MY_POD_IP"
   
   replicas: 1
-  # Activamos KEDA nativamente desde el Chart
   keda:
-    #enabled: true
-    #pollingInterval: 5      # Cada cuántos segundos KEDA revisa la cola
-    #cooldownPeriod: 30      # Segundos que espera sin tareas antes de matar al worker
-    #minReplicaCount: 0      # MAGIA: Si no hay DAGs corriendo, 0 workers activos
-    #maxReplicaCount: 2      # Límite máximo para no saturar tu cluster K3d
-    enabled: false
+    enabled: true
+    pollingInterval: 5      # Cada cuántos segundos KEDA revisa la cola
+    cooldownPeriod: 30      # Segundos que espera sin tareas antes de matar al worker
+    minReplicaCount: 0      # MAGIA: Si no hay DAGs corriendo, 0 workers activos
+    maxReplicaCount: 1      # Límite máximo para no saturar tu cluster K3d
   resources:
     requests:
-      cpu: "1000m"
-      memory: "1.5Gi"
+      cpu: "1"
+      memory: "3Gi"
     limits:
-      cpu: "1500m"
-      memory: "2Gi"
+      cpu: "2"
+      memory: "5Gi"
+  
+  livenessProbe:
+    initialDelaySeconds: 120
+    timeoutSeconds: 60
+    periodSeconds: 60
+    failureThreshold: 20
 
 # ─────────────────────────────────────────────
 # 9. Tuning para tareas pesadas

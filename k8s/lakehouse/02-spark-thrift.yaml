@@ -34,15 +34,21 @@ spec:
             --conf spark.sql.catalog.lakehouse.type=rest \
             --conf spark.sql.catalog.lakehouse.uri=http://iceberg-rest-svc.personal-ai.svc.cluster.local:8181 \
             --conf spark.sql.catalog.lakehouse.io-impl=org.apache.iceberg.aws.s3.S3FileIO \
+            --conf spark.sql.catalog.lakehouse.warehouse=s3a://warehouse/ \
             --conf spark.sql.catalog.lakehouse.s3.endpoint=https://${OCI_NAMESPACE}.compat.objectstorage.${OCI_REGION}.oraclecloud.com \
             --conf spark.sql.catalog.lakehouse.s3.path-style-access=true \
             --conf spark.sql.catalog.lakehouse.s3.access-key-id=${OCI_ACCESS_KEY} \
             --conf spark.sql.catalog.lakehouse.s3.secret-access-key=${OCI_SECRET_KEY} \
-            --conf spark.sql.defaultCatalog=lakehouse \
+            --conf spark.sql.catalog.lakehouse.s3.region=${OCI_REGION} \
+            --conf spark.sql.catalog.lakehouse.s3.payload-signing-enabled=true \
+            --conf spark.sql.catalog.lakehouse.s3.checksum-enabled=false \
             --conf spark.hadoop.fs.s3a.endpoint=https://${OCI_NAMESPACE}.compat.objectstorage.${OCI_REGION}.oraclecloud.com \
             --conf spark.hadoop.fs.s3a.access.key=${OCI_ACCESS_KEY} \
             --conf spark.hadoop.fs.s3a.secret.key=${OCI_SECRET_KEY} \
             --conf spark.hadoop.fs.s3a.path.style.access=true \
+            --conf spark.hadoop.fs.s3a.signing-algorithm=AWS4SignerType \
+            --conf spark.hadoop.fs.s3a.region=${OCI_REGION} \
+            --conf spark.hadoop.fs.s3a.checksum.enabled=false \
             --conf spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem \
             spark-internal
         resources:

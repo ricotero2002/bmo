@@ -95,7 +95,8 @@ eval_udf = udf(evaluate_llm_quality_deepeval, StringType())
 def process_evaluations(ds, sample_fraction=1.0, max_runs=50):
     spark = get_iceberg_spark_session(f"Telemetry_Gold_Eval_{ds}")
 
-    spark.sparkContext.setCheckpointDir("s3a://warehouse/checkpoints/")
+    # Checkpoint local en /tmp (s3a → OCI causaría 403 con Hadoop SDK v1)
+    spark.sparkContext.setCheckpointDir("/tmp/spark-checkpoints/")
 
     logger.info(f"🚀 Iniciando JOB de evaluación (Self-Contained) para: {ds}")
 

@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-spark
+  namespace: personal-ai
+spec:
+  restartPolicy: Never
+  containers:
+    - name: test-spark
+      image: personal_ai_airflow:latest
+      imagePullPolicy: Never
+      command:
+        - bash
+        - -c
+        - |
+          spark-submit \
+            --master local[2] \
+            --driver-memory 1g \
+            --packages 'org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.2,org.apache.iceberg:iceberg-aws-bundle:1.5.2,org.apache.hadoop:hadoop-aws:3.3.4' \
+            --name register_bronze \
+            /opt/airflow/tasks/register_bronze.py --ds 2026-05-08 2>&1
+      envFrom:
+        - secretRef:
+            name: app-secrets
+      resources:
+        limits:
+          memory: "4Gi"
+          cpu: "2"

@@ -28,3 +28,6 @@ COPY data_tooling/airflow/tasks/ /opt/airflow/tasks/
 # Empaquetar el src principal en /opt/project/src para que las tasks de Airflow 
 # puedan importar los providers (e.g. DataLakeProvider)
 COPY src/ /opt/project/src/
+
+# DBT project para las transformaciones Silver/Gold vía Spark Thrift
+COPY data_tooling/dbt/ /opt/airflow/dbt/

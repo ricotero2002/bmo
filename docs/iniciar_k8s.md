@@ -125,3 +125,6 @@ kubectl logs -n personal-ai -l component=webserver --follow
 kubectl logs -n personal-ai -l component=scheduler --follow
 kubectl logs -n personal-ai -l component=worker --follow
 kubectl logs -n personal-ai -l component=pgbouncer --follow
+\El error NoCredentialsError: Unable to locate credentials que ocurrió al final del log (Could not verify previous log to append) no tiene nada que ver con Spark ni con Iceberg.
+
+Ocurrió porque Airflow Remote Logging (que está configurado para subir los logs de las tareas a OCI Object Storage al terminar de ejecutar) intentó conectarse usando un Airflow Connection llamado oci_s3_conn. Como esta conexión no existía en la base de datos de Airflow, el sistema hizo "fallback" a las credenciales por defecto de AWS de la máquina virtual (las cuales, obviamente, no existen en tu worker de Kubernetes), y ahí falló todo el proceso de envoltura de la tarea.
