@@ -27,26 +27,22 @@ default_args = {
 # usando $VAR para que Bash las expanda en tiempo de ejecución desde el entorno
 # del worker donde sí están disponibles.
 # ─────────────────────────────────────────────────────────────────────────────
-SPARK_OCI_CONFS = " ".join([
-    "--conf 'spark.hadoop.fs.s3a.endpoint=https://${OCI_NAMESPACE}.compat.objectstorage.${OCI_REGION}.oraclecloud.com'",
-    "--conf 'spark.hadoop.fs.s3a.access.key=${OCI_ACCESS_KEY}'",
-    "--conf 'spark.hadoop.fs.s3a.secret.key=${OCI_SECRET_KEY}'",
-    "--conf 'spark.hadoop.fs.s3a.path.style.access=true'",
-    "--conf 'spark.hadoop.fs.s3a.aws.credentials.provider=org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider'",
-    "--conf 'spark.hadoop.fs.s3a.signing-algorithm=AWS4SignerType'",
-    "--conf 'spark.hadoop.fs.s3a.connection.ssl.enabled=true'",
-    "--conf 'spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem'",
-    "--conf 'spark.hadoop.fs.s3a.fast.upload=true'",
-    "--conf 'spark.hadoop.fs.s3a.fast.upload.buffer=disk'",
-])
+SPARK_CONNECT_BASE = "python3"
 
-SPARK_PACKAGES = (
-    "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.2,"
-    "org.apache.iceberg:iceberg-aws-bundle:1.5.2,"
-    "org.apache.hadoop:hadoop-aws:3.3.4"
+# ─────────────────────────────────────────────────────────────────────────────
+# DBT base command
+#
+# FIX: PermissionError en /opt/airflow/dbt/target/partial_parse.msgpack
+# Causa: ese directorio fue creado por el scheduler/imagen con el usuario root
+#        y el worker corre como uid 50000 (airflow) sin permisos de escritura.
+# Solución: redirigir target y logs a /tmp vía variables de entorno.
+# ─────────────────────────────────────────────────────────────────────────────
+DBT_BASE = (
+    "mkdir -p /tmp/dbt_target /tmp/dbt_logs && "
+    "export DBT_TARGET_PATH=/tmp/dbt_target && "
+    "export DBT_LOG_PATH=/tmp/dbt_logs && "
+    "dbt run --profiles-dir /opt/airflow/dbt "
 )
-
-SPARK_BASE = f"spark-submit --master 'local[2]' --driver-memory 1g --packages '{SPARK_PACKAGES}' {SPARK_OCI_CONFS}"
 
 with DAG(
     dag_id="pipeline_llm_telemetry",
@@ -104,30 +100,27 @@ with DAG(
         task_id="register_bronze_iceberg",
         execution_timeout=timedelta(minutes=30),
         bash_command=(
-            f"{SPARK_BASE} "
-            "--name register_bronze "
+            f"{SPARK_CONNECT_BASE} "
             "/opt/airflow/tasks/register_bronze.py --ds {{ ds }}"
         ),
     )
 
     # ── 3. Transformación Silver: DBT sobre Iceberg Bronze → Silver ──────────
+    # --target-path /tmp/dbt_target: evita PermissionError en /opt/airflow/dbt/target/
     dbt_silver_task = BashOperator(
         task_id="dbt_run_silver",
         execution_timeout=timedelta(minutes=20),
         cwd="/opt/airflow/dbt",
-        bash_command=(
-            "dbt run --profiles-dir /opt/airflow/dbt "
-            "--select models/silver"
-        ),
+        bash_command=DBT_BASE + "--select models/silver",
     )
+
 
     # ── 4. Evaluación & Forense: Silver → Iceberg Gold ───────────────────────
     evaluate_and_forensics_task = BashOperator(
         task_id="spark_evaluate_gold",
         execution_timeout=timedelta(minutes=45),
         bash_command=(
-            f"{SPARK_BASE} "
-            "--name spark_evaluate_gold "
+            f"{SPARK_CONNECT_BASE} "
             "/opt/airflow/tasks/spark_evaluator.py "
             "--ds {{ ds }} "
             "--sample-fraction {{ params.sample_fraction }} "
@@ -140,10 +133,7 @@ with DAG(
         task_id="dbt_run_gold",
         execution_timeout=timedelta(minutes=20),
         cwd="/opt/airflow/dbt",
-        bash_command=(
-            "dbt run --profiles-dir /opt/airflow/dbt "
-            "--select models/gold"
-        ),
+        bash_command=DBT_BASE + "--select models/gold",
     )
 
     end = EmptyOperator(task_id="end")

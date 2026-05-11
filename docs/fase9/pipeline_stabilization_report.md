@@ -39,6 +39,71 @@ LangSmith API
 
 ## 2. Problemas Encontrados y Soluciones Implementadas
 
+problemas:
+
+webserver:
+para que se viera en la url tuve que poner 
+   base_url: "http://localhost:8081/airflow"
+  y un trafik middleware
+
+tuve que aumentar los tiempos de los probes
+y los resources:
+  resources:
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+
+conexion postgresql:
+  como saturava mucho la conexiones tuve que hacer un PgBouncer que se conecte con aiven y que todo lo de airflow vaya a ese pgbouncer.
+
+woerker:
+
+Como agarraban las variavlesd e celery externas (las que uso en la api) tuve que no agarrarlas directas de app-secrets sino cambiarlas:
+extraEnv: |
+  - name: CELERY_BROKER_URL
+    valueFrom:
+      secretKeyRef:
+        name: app-secrets
+        key: AIRFLOW__CELERY__BROKER_URL
+  - name: CELERY_RESULT_BACKEND
+    valueFrom:
+      secretKeyRef:
+        name: app-secrets
+        key: AIRFLOW__CELERY__RESULT_BACKEND
+
+y como tenia problemas con el host name tuve que obtener la ip:
+ Inyectamos la IP real del pod
+  - name: MY_POD_IP
+    valueFrom:
+      fieldRef:
+        fieldPath: status.podIP
+
+y poner el hostname con args:
+  args:
+    - "bash"
+    - "-c"
+    # Usar la IP evita el crasheo de NoneType y elimina el problema de DNS
+    - "exec airflow celery worker -q default --celery-hostname $MY_POD_IP"
+  
+Como uso spark interno tuve que aumentar los limites del worker y usar keada para no saturar el clsuter si no uso airflow 
+  replicas: 1
+  keda:
+    enabled: true
+    pollingInterval: 5      # Cada cuántos segundos KEDA revisa la cola
+    cooldownPeriod: 30      # Segundos que espera sin tareas antes de matar al worker
+    minReplicaCount: 0      # MAGIA: Si no hay DAGs corriendo, 0 workers activos
+    maxReplicaCount: 1      # Límite máximo para no saturar tu cluster K3d
+  resources:
+    requests:
+      cpu: "1"
+      memory: "3Gi"
+    limits:
+      cpu: "2"
+      memory: "5Gi"
+
 ### 2.1 ❌ 403 Forbidden en Hadoop S3A al leer bucket bronze
 
 **Síntoma:**
@@ -336,43 +401,3 @@ Thrift Pod
 
 
 
-10.42.0.19
- ▼ Log message source details
-*** Found logs served from host http://10.42.0.19:8793/log/dag_id=pipeline_llm_telemetry/run_id=manual__2026-05-08T00:00:00+00:00/task_id=dbt_run_silver/attempt=1.log
- ▲▲▲ Log group end
-[2026-05-10, 03:24:28 UTC] {local_task_job_runner.py:123} ▶ Pre task execution logs
-[2026-05-10, 03:24:40 UTC] {subprocess.py:78} INFO - Tmp dir root location: /tmp
-[2026-05-10, 03:24:40 UTC] {subprocess.py:88} INFO - Running command: ['/usr/bin/bash', '-c', 'dbt run --profiles-dir /opt/airflow/dbt --select models/silver']
-[2026-05-10, 03:24:40 UTC] {subprocess.py:99} INFO - Output:
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO - 03:24:45  Encountered an error:
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO - [Errno 13] Permission denied: '/opt/airflow/dbt/logs/dbt.log'
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO - 03:24:45  Traceback (most recent call last):
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -   File "/home/airflow/.local/lib/python3.11/site-packages/dbt/cli/requires.py", line 138, in wrapper
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -     result, success = func(*args, **kwargs)
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -                       ^^^^^^^^^^^^^^^^^^^^^
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -   File "/home/airflow/.local/lib/python3.11/site-packages/dbt/cli/requires.py", line 77, in wrapper
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -     setup_event_logger(flags=flags, callbacks=callbacks)
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -   File "/home/airflow/.local/lib/python3.11/site-packages/dbt/events/logging.py", line 99, in setup_event_logger
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -     add_logger_to_manager(
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -   File "/home/airflow/.local/lib/python3.11/site-packages/dbt_common/events/event_manager_client.py", line 17, in add_logger_to_manager
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -     _EVENT_MANAGER.add_logger(logger)
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -   File "/home/airflow/.local/lib/python3.11/site-packages/dbt_common/events/event_manager.py", line 36, in add_logger
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -     _JsonLogger(config) if config.line_format == LineFormat.Json else _TextLogger(config)
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -                                                                       ^^^^^^^^^^^^^^^^^^^
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -   File "/home/airflow/.local/lib/python3.11/site-packages/dbt_common/events/logger.py", line 147, in __init__
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -     super().__init__(config)
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -   File "/home/airflow/.local/lib/python3.11/site-packages/dbt_common/events/logger.py", line 107, in __init__
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -     file_handler = RotatingFileHandler(
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -                    ^^^^^^^^^^^^^^^^^^^^
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -   File "/usr/local/lib/python3.11/logging/handlers.py", line 155, in __init__
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -     BaseRotatingHandler.__init__(self, filename, mode, encoding=encoding,
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -   File "/usr/local/lib/python3.11/logging/handlers.py", line 58, in __init__
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -     logging.FileHandler.__init__(self, filename, mode=mode,
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -   File "/usr/local/lib/python3.11/logging/__init__.py", line 1181, in __init__
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -     StreamHandler.__init__(self, self._open())
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -                                  ^^^^^^^^^^^^
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -   File "/usr/local/lib/python3.11/logging/__init__.py", line 1213, in _open
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -     return open_func(self.baseFilename, self.mode,
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO -            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO - PermissionError: [Errno 13] Permission denied: '/opt/airflow/dbt/logs/dbt.log'
-[2026-05-10, 03:24:45 UTC] {subprocess.py:106} INFO - 

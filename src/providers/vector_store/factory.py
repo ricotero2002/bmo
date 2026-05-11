@@ -1,5 +1,5 @@
 import os
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+#from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 
 class VectorStoreFactory:

@@ -60,6 +60,8 @@ def register_bronze(ds: str):
     spark = get_iceberg_spark_session(f"Register_Bronze_{ds}")
     full_table_name = "lakehouse.bronze.raw_llm_traces"
     local_tmp = f"/tmp/bronze_landing_{ds}"
+    remote_url = os.getenv("SPARK_REMOTE")
+    s3_path = f"s3a://bronze/langsmith_raw/date={ds}/"
 
     try:
         ensure_lakehouse_namespaces(spark)
@@ -89,15 +91,19 @@ def register_bronze(ds: str):
             )
         """)
 
-        # 2. Descargar Parquets desde OCI via boto3 (evita el 403 de Hadoop S3A con OCI)
-        logger.info(f"Descargando Parquets de OCI para fecha {ds} → {local_tmp}")
-        n_files = download_parquets_from_oci(ds, local_tmp)
-        if n_files == 0:
-            logger.warning(f"⚠️ No hay archivos en la landing zone para {ds}. Saliendo.")
-            return
+        if remote_url:
+            logger.info(f"🌐 Spark Connect detectado. Leyendo directamente de OCI: {s3_path}")
+            df_new = spark.read.parquet(s3_path)
+        else:
+            # 2. Descargar Parquets desde OCI via boto3 (Legacy/Local mode)
+            logger.info(f"🏠 Modo Local. Descargando Parquets de OCI para fecha {ds} → {local_tmp}")
+            n_files = download_parquets_from_oci(ds, local_tmp)
+            if n_files == 0:
+                logger.warning(f"⚠️ No hay archivos en la landing zone para {ds}. Saliendo.")
+                return
+            logger.info(f"Descargados {n_files} archivos. Leyendo con Spark desde {local_tmp}")
+            df_new = spark.read.parquet(local_tmp)
 
-        logger.info(f"Descargados {n_files} archivos. Leyendo con Spark desde {local_tmp}")
-        df_new = spark.read.parquet(local_tmp)
         logger.info(f"Filas leídas: {df_new.count()}")
 
         # 3. Agregar timestamp de ingesta

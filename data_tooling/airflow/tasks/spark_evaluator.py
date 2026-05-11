@@ -94,11 +94,7 @@ eval_udf = udf(evaluate_llm_quality_deepeval, StringType())
 # =========================================================================
 def process_evaluations(ds, sample_fraction=1.0, max_runs=50):
     spark = get_iceberg_spark_session(f"Telemetry_Gold_Eval_{ds}")
-
-    # Checkpoint local en /tmp (s3a → OCI causaría 403 con Hadoop SDK v1)
-    spark.sparkContext.setCheckpointDir("/tmp/spark-checkpoints/")
-
-    logger.info(f"🚀 Iniciando JOB de evaluación (Self-Contained) para: {ds}")
+    logger.info(f"🚀 Iniciando JOB de evaluación (Spark Connect) para: {ds}")
 
     df_silver = spark.read.format("iceberg").load("lakehouse.silver.stg_agent_runs").filter(col("date") == lit(ds))
     
@@ -123,7 +119,7 @@ def process_evaluations(ds, sample_fraction=1.0, max_runs=50):
     df_success = df_silver.filter(col("is_error") == False)
     if df_success.count() > 0:
         logger.info(f"⚖️ Evaluando registros de éxito (Muestreo: {sample_fraction*100}%, Límite: {max_runs})...")
-        df_sample = df_success.sample(withReplacement=False, fraction=float(sample_fraction)).limit(int(max_runs)).checkpoint()
+        df_sample = df_success.sample(withReplacement=False, fraction=float(sample_fraction)).limit(int(max_runs))
 
         df_evaluated = df_sample.withColumn("eval_json", eval_udf(col("inputs_json"), col("outputs_json")))
 
@@ -142,7 +138,7 @@ def process_evaluations(ds, sample_fraction=1.0, max_runs=50):
                 "ingested_at"
             )
 
-        df_final = df_final.checkpoint()
+        # df_final = df_final.checkpoint()
         
         spark.sql(f"""
             CREATE TABLE IF NOT EXISTS lakehouse.gold.agent_evaluations (

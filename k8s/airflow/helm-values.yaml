@@ -2,9 +2,16 @@
 # Airflow Helm Chart - Custom Values para BMO Personal AI Cluster
 # =====================================================================
 
+# NOTA: Solo puede haber UN bloque 'config:' en el values.yaml.
+# El segundo bloque (scheduler) fue unificado aquí para evitar que sobrescriba a este.
 config:
   webserver:
     base_url: "http://localhost:8081/airflow"
+  scheduler:
+    scheduler_zombie_task_threshold: 3600  # 1 hora para tareas largas
+    job_heartbeat_sec: 30
+  core:
+    dag_file_processor_timeout: 300
 
 # ─────────────────────────────────────────────
 # 1. Imagen personalizada
@@ -72,6 +79,8 @@ env:
     value: "http://iceberg-rest-svc.personal-ai.svc.cluster.local:8181"
   - name: LAKEHOUSE_S3_ENDPOINT
     value: "https://$(OCI_NAMESPACE).compat.objectstorage.$(OCI_REGION).oraclecloud.com"
+  - name: SPARK_REMOTE
+    value: "sc://spark-connect-svc.personal-ai.svc.cluster.local:15002"
   - name: AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_SIZE
     value: "10"
   - name: AIRFLOW__DATABASE__SQL_ALCHEMY_MAX_OVERFLOW
@@ -81,17 +90,16 @@ env:
   - name: AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_PRE_PING
     value: "True"
   - name: AIRFLOW__WEBSERVER__WORKERS
-    value: "2"
+    value: "1"    # Reducido de 2: cada worker Gunicorn consume ~200MB en RAM
   - name: AIRFLOW__CELERY__BROKER_TRANSPORT_OPTIONS
     value: '{"visibility_timeout": 3600}'
   - name: AIRFLOW__CELERY__OPERATION_TIMEOUT
     value: "10"
   - name: AIRFLOW__LOGGING__REMOTE_LOGGING
     value: "False"
-  - name: AIRFLOW__LOGGING__REMOTE_BASE_LOG_FOLDER
-    value: "s3://bronze/airflow-logs"
-  - name: AIRFLOW__LOGGING__REMOTE_LOG_CONN_ID
-    value: "oci_s3_conn"
+  # REMOTE_BASE_LOG_FOLDER y REMOTE_LOG_CONN_ID removidos intencionalmente:
+  # Con REMOTE_LOGGING=False no se usan, pero si están configurados pueden
+  # causar un NoCredentialsError al final de cada tarea que oculta el error real.
 
 extraEnv: |
   - name: CELERY_BROKER_URL
@@ -164,10 +172,10 @@ webserver:
   resources:
     limits:
       cpu: "1000m"
-      memory: "1Gi"
+      memory: "1536Mi"   # Aumentado: 1Gi causaba OOMKilled en dev cluster
     requests:
-      cpu: "500m"
-      memory: "512Mi"
+      cpu: "300m"
+      memory: "768Mi"
 
 # ─────────────────────────────────────────────
 # 8. Workers
@@ -194,11 +202,11 @@ workers:
     maxReplicaCount: 1      # Límite máximo para no saturar tu cluster K3d
   resources:
     requests:
-      cpu: "1"
-      memory: "3Gi"
+      cpu: "500m"
+      memory: "1Gi"
     limits:
-      cpu: "2"
-      memory: "5Gi"
+      cpu: "1500m"
+      memory: "2.5Gi"
   
   livenessProbe:
     initialDelaySeconds: 120
@@ -209,12 +217,7 @@ workers:
 # ─────────────────────────────────────────────
 # 9. Tuning para tareas pesadas
 # ─────────────────────────────────────────────
-config:
-  scheduler:
-    scheduler_zombie_task_threshold: 3600  # Aumentar a 1 hora para tareas largas de LangSmith
-    job_heartbeat_sec: 30                 # Latido cada 30 seg
-  core:
-    dag_file_processor_timeout: 300
+# (config unificado arriba — ver bloque inicial)
 
 # ─────────────────────────────────────────────
 # 9. Scheduler

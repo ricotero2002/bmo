@@ -1,33 +1,28 @@
 FROM apache/airflow:2.10.5-python3.11
 
 USER root
-
-# Optimización: Combinar comandos, limpiar cache y configurar Java
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    openjdk-17-jre-headless \
     procps \
     git \
-    && apt-get autoremove -yqq --purge \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Configurar variables de entorno para Java (necesario para Spark/Iceberg)
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-ENV PATH="${JAVA_HOME}/bin:${PATH}"
-
+# --- Cambiamos a airflow para instalar paquetes de Python ---
 USER airflow
-
-# Optimización: Instalar requerimientos con cache de pip
 COPY data_tooling/airflow/requirements.txt /opt/airflow/requirements.txt
 RUN pip install --no-cache-dir -r /opt/airflow/requirements.txt
 
-# Empaquetar DAGs y Tasks dentro de la imagen para que estén disponibles en K8s
-COPY data_tooling/airflow/dags/ /opt/airflow/dags/
-COPY data_tooling/airflow/tasks/ /opt/airflow/tasks/
+# --- Cambiamos a root para copiar archivos y setear permisos de dbt ---
+USER root
+COPY --chown=airflow:root data_tooling/airflow/dags/ /opt/airflow/dags/
+COPY --chown=airflow:root data_tooling/airflow/tasks/ /opt/airflow/tasks/
+COPY --chown=airflow:root src/ /opt/project/src/
+COPY --chown=airflow:root data_tooling/dbt/ /opt/airflow/dbt/
 
-# Empaquetar el src principal en /opt/project/src para que las tasks de Airflow 
-# puedan importar los providers (e.g. DataLakeProvider)
-COPY src/ /opt/project/src/
+RUN mkdir -p /opt/airflow/dbt/logs /opt/airflow/dbt/target \
+    && chown -R airflow:root /opt/airflow/dbt \
+    && chmod -R 775 /opt/airflow/dbt
 
-# DBT project para las transformaciones Silver/Gold vía Spark Thrift
-COPY data_tooling/dbt/ /opt/airflow/dbt/
+# --- Volvemos a airflow para la ejecución ---
+USER airflow
+WORKDIR /opt/airflow

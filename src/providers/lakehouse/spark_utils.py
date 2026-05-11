@@ -62,66 +62,68 @@ def get_iceberg_spark_session(app_name: str) -> SparkSession:
         "org.apache.hadoop:hadoop-aws:3.3.4",
     ])
 
-    spark = (
-        SparkSession.builder.appName(app_name)
-        # ── Iceberg ──────────────────────────────────────────────────────────
-        .config("spark.jars.packages", packages)
-        .config(
-            "spark.sql.extensions",
-            "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",
+    remote_url = os.getenv("SPARK_REMOTE")
+    
+    builder = SparkSession.builder.appName(app_name)
+
+    if remote_url:
+        logger.info(f"🌐 Conectando a Spark Connect Server: {remote_url}")
+        spark = builder.remote(remote_url).getOrCreate()
+    else:
+        logger.info(f"🏠 Iniciando Spark Session LOCAL (Legacy)")
+        spark = (
+            builder
+            # ── Iceberg ──────────────────────────────────────────────────────────
+            .config("spark.jars.packages", packages)
+            .config(
+                "spark.sql.extensions",
+                "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",
+            )
+            # ── Catálogo REST Iceberg ─────────────────────────────────────────────
+            .config("spark.sql.defaultCatalog", "lakehouse")
+            .config("spark.sql.catalog.lakehouse", "org.apache.iceberg.spark.SparkCatalog")
+            .config("spark.sql.catalog.lakehouse.type", "rest")
+            .config("spark.sql.catalog.lakehouse.uri", rest_uri)
+            .config("spark.sql.catalog.lakehouse.warehouse", "s3a://warehouse/")
+            .config("spark.sql.catalog.lakehouse.io-impl", "org.apache.iceberg.aws.s3.S3FileIO")
+            .config("spark.sql.catalog.lakehouse.s3.endpoint", s3_endpoint)
+            .config("spark.sql.catalog.lakehouse.s3.path-style-access", "true")
+            .config("spark.sql.catalog.lakehouse.s3.access-key-id", access_key)
+            .config("spark.sql.catalog.lakehouse.s3.secret-access-key", secret_key)
+            .config("spark.sql.catalog.lakehouse.s3.region", region)
+            .config("spark.sql.catalog.lakehouse.s3.payload-signing-enabled", "true")
+            .config("spark.sql.catalog.lakehouse.s3.checksum-enabled", "false")
+            .config("spark.sql.catalog.lakehouse.client.region", region)
+            # ── S3A Hadoop — credenciales EXPLÍCITAS en el JVM ───────────────────
+            .config("spark.hadoop.fs.s3a.endpoint", s3_endpoint)
+            .config("spark.hadoop.fs.s3a.access.key", access_key)
+            .config("spark.hadoop.fs.s3a.secret.key", secret_key)
+            .config("spark.hadoop.fs.s3a.path.style.access", "true")
+            .config(
+                "spark.hadoop.fs.s3a.aws.credentials.provider",
+                "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
+            )
+            .config("spark.hadoop.fs.s3a.signing-algorithm", "AWS4SignerType")
+            .config("spark.hadoop.fs.s3a.region", region)
+            .config("spark.hadoop.fs.s3a.ssl.channel.mode", "default")
+            .config("spark.hadoop.fs.s3a.connection.request.timeout", "60000")
+            .config("spark.hadoop.fs.s3a.attempts.maximum", "3")
+            .config("spark.hadoop.fs.s3a.connection.establish.timeout", "10000")
+            .config("spark.hadoop.fs.s3a.connection.timeout", "60000")
+            .config("spark.hadoop.fs.s3a.multipart.enabled", "true")
+            .config("spark.hadoop.fs.s3a.multipart.size", "134217728")  # 128MB
+            .config("spark.hadoop.fs.s3a.bulk.delete.page.size", "250")
+            .config("spark.sql.warehouse.dir", "s3a://warehouse/")
+            .config("spark.hadoop.fs.s3a.connection.ssl.enabled", ssl_enabled)
+            .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+            .config("spark.hadoop.fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+            .config("spark.hadoop.fs.s3a.checksum.enabled", "false")
+            .config("spark.hadoop.fs.s3a.fast.upload", "true")
+            .config("spark.hadoop.fs.s3a.fast.upload.buffer", "disk")
+            .config("spark.driver.memory", "1g")
+            .config("spark.executor.memory", "1g")
+            .getOrCreate()
         )
-        # ── Catálogo REST Iceberg ─────────────────────────────────────────────
-        .config("spark.sql.defaultCatalog", "lakehouse")
-        .config("spark.sql.catalog.lakehouse", "org.apache.iceberg.spark.SparkCatalog")
-        .config("spark.sql.catalog.lakehouse.type", "rest")
-        .config("spark.sql.catalog.lakehouse.uri", rest_uri)
-        .config("spark.sql.catalog.lakehouse.warehouse", "s3a://warehouse/")
-        .config("spark.sql.catalog.lakehouse.io-impl", "org.apache.iceberg.aws.s3.S3FileIO")
-        .config("spark.sql.catalog.lakehouse.s3.endpoint", s3_endpoint)
-        .config("spark.sql.catalog.lakehouse.s3.path-style-access", "true")
-        .config("spark.sql.catalog.lakehouse.s3.access-key-id", access_key)
-        .config("spark.sql.catalog.lakehouse.s3.secret-access-key", secret_key)
-        .config("spark.sql.catalog.lakehouse.s3.region", region)
-        .config("spark.sql.catalog.lakehouse.s3.payload-signing-enabled", "true")
-        .config("spark.sql.catalog.lakehouse.s3.checksum-enabled", "false")
-        .config("spark.sql.catalog.lakehouse.client.region", region)
-        # ── S3A Hadoop — credenciales EXPLÍCITAS en el JVM ───────────────────
-        # Sin esto, Hadoop usa DefaultAWSCredentialsProviderChain que busca
-        # ~/.aws/credentials o variables EC2 metadata → 403 en OCI.
-        .config("spark.hadoop.fs.s3a.endpoint", s3_endpoint)
-        .config("spark.hadoop.fs.s3a.access.key", access_key)
-        .config("spark.hadoop.fs.s3a.secret.key", secret_key)
-        .config("spark.hadoop.fs.s3a.path.style.access", "true")
-        .config(
-            "spark.hadoop.fs.s3a.aws.credentials.provider",
-            "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
-        )
-        # Firma v4 obligatoria para OCI
-        .config("spark.hadoop.fs.s3a.signing-algorithm", "AWS4SignerType")
-        .config("spark.hadoop.fs.s3a.region", region)
-        # Payload signing (OCI lo requiere — boto3 lo activa, Hadoop no por default)
-        .config("spark.hadoop.fs.s3a.ssl.channel.mode", "default")
-        .config("spark.hadoop.fs.s3a.connection.request.timeout", "60000")
-        .config("spark.hadoop.fs.s3a.attempts.maximum", "3")
-        .config("spark.hadoop.fs.s3a.connection.establish.timeout", "10000")
-        .config("spark.hadoop.fs.s3a.connection.timeout", "60000")
-        # Desactivar chunked encoding (OCI no lo soporta bien con unsigned payload)
-        .config("spark.hadoop.fs.s3a.multipart.enabled", "true")
-        .config("spark.hadoop.fs.s3a.multipart.size", "134217728")  # 128MB
-        .config("spark.hadoop.fs.s3a.bulk.delete.page.size", "250")
-        .config("spark.sql.warehouse.dir", "s3a://warehouse/")
-        .config("spark.hadoop.fs.s3a.connection.ssl.enabled", ssl_enabled)
-        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-        .config("spark.hadoop.fs.s3.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-        .config("spark.hadoop.fs.s3a.checksum.enabled", "false")
-        # Fast upload con buffer en disco (Evita el OOM Error 137 en OCI)
-        .config("spark.hadoop.fs.s3a.fast.upload", "true")
-        .config("spark.hadoop.fs.s3a.fast.upload.buffer", "disk")
-        # ── Memoria ──────────────────────────────────────────────────────────
-        .config("spark.driver.memory", "1g")
-        .config("spark.executor.memory", "1g")
-        .getOrCreate()
-    )
 
     # Verificación: log del endpoint efectivo que recibió Hadoop
     hadoop_conf = spark.sparkContext._jsc.hadoopConfiguration()

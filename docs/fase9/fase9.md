@@ -150,3 +150,49 @@ Excluido:
 - Mantener secretos centralizados y permisos minimos (least privilege).
 
 docker compose -f data_tooling/docker-compose.spark-airflow.yml up -d --build
+
+
+Pendientes:
+pasar a usar el spark de conection y no local en worker
+sacar (si se puede) los jas del dockerfile
+la parte de metabase
+la parte de el analisis de la ingesta
+
+
+
+10.42.0.154
+ ▼ Log message source details
+*** Found logs served from host http://10.42.0.154:8793/log/dag_id=pipeline_llm_telemetry/run_id=manual__2026-05-08T18:34:53+00:00/task_id=spark_evaluate_gold/attempt=5.log
+ ▲▲▲ Log group end
+[2026-05-11, 16:59:17 UTC] {local_task_job_runner.py:123} ▶ Pre task execution logs
+[2026-05-11, 16:59:30 UTC] {subprocess.py:78} INFO - Tmp dir root location: /tmp
+[2026-05-11, 16:59:30 UTC] {subprocess.py:88} INFO - Running command: ['/usr/bin/bash', '-c', 'python3 /opt/airflow/tasks/spark_evaluator.py --ds 2026-05-08 --sample-fraction 1 --max-runs 50']
+[2026-05-11, 16:59:30 UTC] {subprocess.py:99} INFO - Output:
+[2026-05-11, 16:59:37 UTC] {subprocess.py:106} INFO - Traceback (most recent call last):
+[2026-05-11, 16:59:37 UTC] {subprocess.py:106} INFO -   File "/opt/airflow/tasks/spark_evaluator.py", line 18, in <module>
+[2026-05-11, 16:59:37 UTC] {subprocess.py:106} INFO -     from src.evals.eval_utils import NvidiaJudge
+[2026-05-11, 16:59:37 UTC] {subprocess.py:106} INFO -   File "/opt/project/src/evals/eval_utils.py", line 8, in <module>
+[2026-05-11, 16:59:37 UTC] {subprocess.py:106} INFO -     from src.providers.record_manager.factory import RecordManagerFactory
+[2026-05-11, 16:59:37 UTC] {subprocess.py:106} INFO -   File "/opt/project/src/providers/record_manager/factory.py", line 6, in <module>
+[2026-05-11, 16:59:37 UTC] {subprocess.py:106} INFO -     from langchain_classic.indexes import SQLRecordManager
+[2026-05-11, 16:59:37 UTC] {subprocess.py:106} INFO - ModuleNotFoundError: No module named 'langchain_classic'
+[2026-05-11, 16:59:37 UTC] {subprocess.py:110} INFO - Command exited with return code 1
+[2026-05-11, 16:59:38 UTC] {taskinstance.py:3313} ERROR - Task failed with exception
+Traceback (most recent call last):
+  File "/home/airflow/.local/lib/python3.11/site-packages/airflow/models/taskinstance.py", line 763, in _execute_task
+    result = _execute_callable(context=context, **execute_callable_kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.11/site-packages/airflow/models/taskinstance.py", line 734, in _execute_callable
+    return ExecutionCallableRunner(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.11/site-packages/airflow/utils/operator_helpers.py", line 252, in run
+    return self.func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.11/site-packages/airflow/models/baseoperator.py", line 424, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.11/site-packages/airflow/operators/bash.py", line 276, in execute
+    raise AirflowException(
+airflow.exceptions.AirflowException: Bash command failed. The command returned a non-zero exit code 1.
+[2026-05-11, 16:59:38 UTC] {taskinstance.py:1226} INFO - Marking task as UP_FOR_RETRY. dag_id=pipeline_llm_telemetry, task_id=spark_evaluate_gold, run_id=manual__2026-05-08T18:34:53+00:00, execution_date=20260508T183453, start_date=20260511T165918, end_date=20260511T165938
+[2026-05-11, 16:59:41 UTC] {taskinstance.py:341} ▶ Post task execution logs
