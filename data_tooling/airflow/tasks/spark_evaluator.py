@@ -3,9 +3,9 @@ import sys
 import json
 import logging
 import argparse
+import pandas as pd
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, lit, udf, get_json_object
-from pyspark.sql.types import StringType
+from pyspark.sql.functions import col, lit
 
 # Asegurar acceso a los providers del proyecto
 sys.path.append("/opt/project")
@@ -17,16 +17,18 @@ logger = logging.getLogger(__name__)
 
 from src.evals.eval_utils import NvidiaJudge
 
+
 # =========================================================================
-# LA FUNCIÓN UDF: Esto corre en los workers de Spark
+# EVALUACIÓN EN PYTHON PURO — corre en el worker de Airflow, no en Spark
 # =========================================================================
-def evaluate_llm_quality_deepeval(inputs_json_str, outputs_json_str):
+def evaluate_single_run(row: dict) -> dict:
+    """Evalúa un run individual. Se llama desde pandas.apply(), no desde un UDF de Spark."""
     try:
         from deepeval.test_case import LLMTestCase
         from deepeval.metrics import AnswerRelevancyMetric, FaithfulnessMetric
-        
-        inputs = json.loads(inputs_json_str) if inputs_json_str else {}
-        outputs = json.loads(outputs_json_str) if outputs_json_str else {}
+
+        inputs = json.loads(row["inputs_json"]) if row["inputs_json"] else {}
+        outputs = json.loads(row["outputs_json"]) if row["outputs_json"] else {}
 
         # 1. Extraer Input
         user_input = "Consulta desconocida"
@@ -51,8 +53,10 @@ def evaluate_llm_quality_deepeval(inputs_json_str, outputs_json_str):
 
             if msg_type == "ai" and not content.startswith("[Pensamiento"):
                 # Limpiar bloques de fuentes para no sesgar la relevancia
-                if "### Fuentes" in content: content = content.split("### Fuentes")[0].strip()
-                elif "Fuentes:" in content: content = content.split("Fuentes:")[0].strip()
+                if "### Fuentes" in content:
+                    content = content.split("### Fuentes")[0].strip()
+                elif "Fuentes:" in content:
+                    content = content.split("Fuentes:")[0].strip()
                 ai_output = content
             
             elif msg_type == "tool" and msg.get("name") in ["knowledge_base_retriever", "web_search"]:
@@ -69,25 +73,33 @@ def evaluate_llm_quality_deepeval(inputs_json_str, outputs_json_str):
         relevancy_metric = AnswerRelevancyMetric(threshold=0.7, model=judge)
         faithfulness_metric = FaithfulnessMetric(threshold=0.7, model=judge) 
 
-        test_case = LLMTestCase(input=user_input, actual_output=ai_output, retrieval_context=retrieval_context)
+        test_case = LLMTestCase(
+            input=user_input, 
+            actual_output=ai_output, 
+            retrieval_context=retrieval_context
+        )
         
         # Ejecutamos métricas (DeepEval internamente maneja el loop si se miden juntas)
         relevancy_metric.measure(test_case)
         faithfulness_metric.measure(test_case)
 
-        return json.dumps({
-            "answer_relevancy_score": relevancy_metric.score,
-            "faithfulness_score": faithfulness_metric.score,
-            "relevancy_reason": relevancy_metric.reason,
-            "faithfulness_reason": faithfulness_metric.reason
-        })
+        return {
+            "answer_relevancy": float(relevancy_metric.score),
+            "faithfulness": float(faithfulness_metric.score),
+            "relevancy_reason": str(relevancy_metric.reason),
+            "faithfulness_reason": str(faithfulness_metric.reason)
+        }
 
     except Exception as e:
         import traceback
-        logger.error(f"Error en UDF de evaluación: {e}")
-        return json.dumps({"error": str(e), "traceback": traceback.format_exc()})
+        logger.error(f"Error evaluando run {row.get('run_id')}: {e}")
+        return {
+            "answer_relevancy": None,
+            "faithfulness": None,
+            "relevancy_reason": f"ERROR: {e}",
+            "faithfulness_reason": traceback.format_exc()
+        }
 
-eval_udf = udf(evaluate_llm_quality_deepeval, StringType())
 
 # =========================================================================
 # JOB PRINCIPAL
@@ -96,14 +108,19 @@ def process_evaluations(ds, sample_fraction=1.0, max_runs=50):
     spark = get_iceberg_spark_session(f"Telemetry_Gold_Eval_{ds}")
     logger.info(f"🚀 Iniciando JOB de evaluación (Spark Connect) para: {ds}")
 
-    df_silver = spark.read.format("iceberg").load("lakehouse.silver.stg_agent_runs").filter(col("date") == lit(ds))
+    df_silver = (
+        spark.read.format("iceberg")
+        .load("lakehouse.silver.stg_agent_runs")
+        .filter(col("date") == lit(ds))
+    )
     
-    # Análisis de Errores
+    # ── 1. Errores: Spark los escribe directo, no necesitan evaluación ──────────
     df_errors = df_silver.filter(col("is_error") == True)
-    if df_errors.count() > 0:
-        logger.info(f"🔎 Registrando {df_errors.count()} errores.")
+    error_count = df_errors.count()
+    if error_count > 0:
+        logger.info(f"🔎 Registrando {error_count} errores.")
         
-        spark.sql(f"""
+        spark.sql("""
             CREATE TABLE IF NOT EXISTS lakehouse.gold.agent_errors (
                 run_id STRING,
                 date STRING,
@@ -115,32 +132,39 @@ def process_evaluations(ds, sample_fraction=1.0, max_runs=50):
         df_errors.select("run_id", "date", "error_message", "ingested_at") \
             .write.format("iceberg").mode("append").save("lakehouse.gold.agent_errors")
 
-    # Calidad (Modo Test)
+    # ── 2. Calidad: collect → evaluar en Python → escribir de vuelta ───────────
     df_success = df_silver.filter(col("is_error") == False)
-    if df_success.count() > 0:
-        logger.info(f"⚖️ Evaluando registros de éxito (Muestreo: {sample_fraction*100}%, Límite: {max_runs})...")
-        df_sample = df_success.sample(withReplacement=False, fraction=float(sample_fraction)).limit(int(max_runs))
-
-        df_evaluated = df_sample.withColumn("eval_json", eval_udf(col("inputs_json"), col("outputs_json")))
-
-        df_final = df_evaluated \
-            .withColumn("answer_relevancy", get_json_object(col("eval_json"), "$.answer_relevancy_score").cast("double")) \
-            .withColumn("faithfulness", get_json_object(col("eval_json"), "$.faithfulness_score").cast("double")) \
-            .withColumn("relevancy_reason", get_json_object(col("eval_json"), "$.relevancy_reason")) \
-            .withColumn("faithfulness_reason", get_json_object(col("eval_json"), "$.faithfulness_reason")) \
-            .select(
-                "run_id", 
-                "date", 
-                "answer_relevancy", 
-                "faithfulness", 
-                "relevancy_reason", 
-                "faithfulness_reason", 
-                "ingested_at"
-            )
-
-        # df_final = df_final.checkpoint()
+    success_count = df_success.count()
+    if success_count > 0:
+        logger.info(f"⚖️ Recolectando muestra para evaluar ({sample_fraction*100:.0f}%, max {max_runs})... ({success_count} disponibles)")
         
-        spark.sql(f"""
+        # .toPandas() trae los datos al worker de Airflow (donde sí está deepeval)
+        pdf: pd.DataFrame = (
+            df_success
+            .sample(withReplacement=False, fraction=float(sample_fraction))
+            .limit(int(max_runs))
+            .select("run_id", "date", "inputs_json", "outputs_json", "ingested_at")
+            .toPandas()
+        )
+
+        if len(pdf) == 0:
+            logger.warning("⚠️ Muestra vacía tras muestreo.")
+            spark.stop()
+            return
+
+        logger.info(f"📊 Evaluando {len(pdf)} runs con deepeval en el worker local...")
+
+        # Evaluación en Python puro — deepeval está instalado en Airflow, no en Spark
+        eval_results = pdf.apply(evaluate_single_run, axis=1, result_type="expand")
+        pdf_final = pd.concat([
+            pdf[["run_id", "date", "ingested_at"]],
+            eval_results
+        ], axis=1)
+
+        logger.info(f"✅ Evaluación finalizada. Escribiendo resultados a Iceberg...")
+        
+        # Spark escribe el resultado de vuelta a Iceberg
+        spark.sql("""
             CREATE TABLE IF NOT EXISTS lakehouse.gold.agent_evaluations (
                 run_id STRING,
                 date STRING,
@@ -153,11 +177,13 @@ def process_evaluations(ds, sample_fraction=1.0, max_runs=50):
             PARTITIONED BY (date)
         """)
 
+        # Convertimos de vuelta a Spark DataFrame para escribir en Iceberg
+        df_final = spark.createDataFrame(pdf_final)
         df_final.write.format("iceberg").mode("overwrite") \
             .option("replaceWhere", f"date = '{ds}'") \
             .save("lakehouse.gold.agent_evaluations")
         
-        logger.info(f"✅ Evaluación finalizada.")
+        logger.info(f"🎉 {len(pdf_final)} evaluaciones escritas en lakehouse.gold.agent_evaluations")
     else:
         logger.warning(f"⚠️ Sin datos para evaluar.")
 

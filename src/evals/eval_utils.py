@@ -4,9 +4,7 @@ import uuid
 from typing import List, Optional, Any, Type
 from deepeval.models.base_model import DeepEvalBaseLLM
 from src.core.llm import LLMFactory
-from src.providers.vector_store.factory import VectorStoreFactory
-from src.providers.record_manager.factory import RecordManagerFactory
-from src.providers.database.status_provider import StatusProvider
+from src.core.llm import LLMFactory
 from dotenv import load_dotenv
 import os
 
@@ -31,6 +29,8 @@ class NvidiaJudge(DeepEvalBaseLLM):
         Extrae de forma robusta solo el bloque JSON (objeto o array), 
         ignorando cualquier charla adicional (babbling) del modelo.
         """
+        # Eliminar bloques de thinking de modelos como Qwen3
+        text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
         text = text.strip()
         
         # Busca todo lo que esté entre el primer { o [ y el último } o ]
@@ -86,9 +86,12 @@ class EvalCleanup:
         """
         Removes all traces of the specific documents from the system.
         """
+        from src.providers.vector_store.factory import VectorStoreFactory
+        from src.providers.record_manager.factory import RecordManagerFactory
+        # from src.providers.database.status_provider import StatusProvider
+
         vector_db = VectorStoreFactory.get_provider().getVectorStore()
         record_manager = RecordManagerFactory.get_manager()
-        # status_provider = StatusProvider() # Not used for now
 
         for doc_id in doc_ids:
             try:

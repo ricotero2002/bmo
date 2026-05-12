@@ -3,13 +3,11 @@ import re
 import os
 import logging
 from datetime import datetime, timezone
-from markitdown import MarkItDown
-from langchain_core.documents import Document
-from langchain_classic.indexes import index
 from typing import Optional
 
 class ExtractionService:
     def __init__(self):
+        from markitdown import MarkItDown
         self.md = MarkItDown()
 
     def extract_text_from_bytes(self, content: bytes, filename: str) -> str:
@@ -39,8 +37,9 @@ class ExtractionService:
                     user_id: str = None,
                     page_number: int = None,
                     chunk_index: int = None,
-                    document_date: str = None) -> Document:
+                    document_date: str = None):
         """Envuelve el texto en el formato que espera LangChain."""
+        from langchain_core.documents import Document
         # Manejo de fecha
         created_at_ts = datetime.now(timezone.utc).timestamp()
         has_custom_date = False
@@ -78,6 +77,7 @@ class ExtractionService:
         )
 
     def index_documents(self, chunks, record_manager, vector_store):
+        from langchain_classic.indexes import index
         return index(
             docs_source=chunks,
             record_manager=record_manager,

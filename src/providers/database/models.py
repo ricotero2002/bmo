@@ -69,6 +69,12 @@ class IngestionJob(Base):
     created_at    = Column(DateTime, default=datetime.utcnow)
     updated_at    = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     file_hash     = Column(String(256), nullable=True, index=True)
+    
+    # --- Reporte de Ingesta (Fase 2) ---
+    report          = Column(Text, nullable=True)
+    chunks_count    = Column(Integer, nullable=True)
+    strategy        = Column(String(50), nullable=True)
+    processing_time = Column(Integer, nullable=True) # Segundos
 
 class Chat(Base):
     __tablename__ = "chats"

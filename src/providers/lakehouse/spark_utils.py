@@ -67,8 +67,13 @@ def get_iceberg_spark_session(app_name: str) -> SparkSession:
     builder = SparkSession.builder.appName(app_name)
 
     if remote_url:
-        logger.info(f"🌐 Conectando a Spark Connect Server: {remote_url}")
-        spark = builder.remote(remote_url).getOrCreate()
+        logger.info(f"🌐 Intentando conectar a Spark Connect en: {remote_url} ...")
+        try:
+            spark = builder.remote(remote_url).getOrCreate()
+            logger.info("✅ Conexión establecida con Spark Connect.")
+        except Exception as e:
+            logger.error(f"❌ Error conectando a Spark Connect: {e}")
+            raise
     else:
         logger.info(f"🏠 Iniciando Spark Session LOCAL (Legacy)")
         spark = (
@@ -125,10 +130,7 @@ def get_iceberg_spark_session(app_name: str) -> SparkSession:
             .getOrCreate()
         )
 
-    # Verificación: log del endpoint efectivo que recibió Hadoop
-    hadoop_conf = spark.sparkContext._jsc.hadoopConfiguration()
-    logger.info(f"S3A endpoint efectivo: {hadoop_conf.get('fs.s3a.endpoint', 'NOT SET')}")
-    logger.info(f"S3A credentials provider: {hadoop_conf.get('fs.s3a.aws.credentials.provider', 'NOT SET')}")
+    # Verificación removida para compatibilidad con Spark Connect (no hay SparkContext en el cliente)
 
     return spark
 

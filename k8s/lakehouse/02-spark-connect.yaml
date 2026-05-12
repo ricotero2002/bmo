@@ -27,20 +27,17 @@ spec:
         command: ["/bin/bash", "-c"]
         args:
           - |
-            cd /opt/spark/jars
-            curl -fO https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-spark-runtime-3.5_2.12/1.5.2/iceberg-spark-runtime-3.5_2.12-1.5.2.jar
-            curl -fO https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-aws-bundle/1.5.2/iceberg-aws-bundle-1.5.2.jar
-            curl -fO https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar
-            curl -fO https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar
-
             export OCI_ENDPOINT="https://${OCI_NAMESPACE}.compat.objectstorage.${OCI_REGION}.oraclecloud.com"
             export AWS_REGION="${OCI_REGION}"
             export AWS_ACCESS_KEY_ID="${OCI_ACCESS_KEY}"
             export AWS_SECRET_ACCESS_KEY="${OCI_SECRET_KEY}"
 
+            # Un solo --packages resuelve todo el classpath junto, sin curl
             /opt/spark/sbin/start-connect-server.sh \
               --master "local[*]" \
-              --packages "org.apache.spark:spark-connect_2.12:3.5.1" \
+              --packages "org.apache.spark:spark-connect_2.12:3.5.1,org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.2,org.apache.iceberg:iceberg-aws-bundle:1.5.2,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262" \
+              --conf "spark.driver.memory=3g" \
+              --conf "spark.driver.memoryOverhead=512m" \
               --conf "spark.connect.grpc.binding.port=15002" \
               --conf "spark.sql.defaultCatalog=lakehouse" \
               --conf "spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions" \
@@ -55,6 +52,7 @@ spec:
               --conf "spark.sql.catalog.lakehouse.s3.secret-access-key=${OCI_SECRET_KEY}" \
               --conf "spark.sql.catalog.lakehouse.s3.region=${OCI_REGION}" \
               --conf "spark.sql.catalog.lakehouse.s3.payload-signing-enabled=true" \
+              --conf "spark.sql.catalog.lakehouse.s3.checksum-enabled=false" \
               --conf "spark.hadoop.fs.s3a.endpoint=${OCI_ENDPOINT}" \
               --conf "spark.hadoop.fs.s3a.access.key=${OCI_ACCESS_KEY}" \
               --conf "spark.hadoop.fs.s3a.secret.key=${OCI_SECRET_KEY}" \
@@ -63,8 +61,7 @@ spec:
               --conf "spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem" \
               --conf "spark.hadoop.fs.s3a.aws.credentials.provider=org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider"
 
-            # Mantener el contenedor vivo
-            tail -f /opt/spark/logs/*.out
+            tail -f /opt/spark/logs/*.out 2>/dev/null || sleep infinity
         resources:
           requests:
             cpu: "500m"

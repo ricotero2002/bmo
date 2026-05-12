@@ -66,7 +66,7 @@ env:
   - name: AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION
     value: "True"
   - name: AIRFLOW__WEBSERVER__SESSION_BACKEND
-    value: "securecookie"
+    value: "database"
   - name: AIRFLOW__CORE__HOSTNAME_CALLABLE
     value: "airflow.utils.net.get_host_ip_address"
   - name: AIRFLOW__WEBSERVER__BASE_URL
@@ -90,7 +90,13 @@ env:
   - name: AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_PRE_PING
     value: "True"
   - name: AIRFLOW__WEBSERVER__WORKERS
-    value: "1"    # Reducido de 2: cada worker Gunicorn consume ~200MB en RAM
+    value: "2"
+  - name: AIRFLOW__WEBSERVER__WEB_SERVER_WORKER_TIMEOUT
+    value: "60"
+  - name: AIRFLOW__WEBSERVER__PAGE_SIZE
+    value: "25"
+  - name: AIRFLOW__WEBSERVER__RELOAD_ON_PLUGIN_CHANGE
+    value: "False"
   - name: AIRFLOW__CELERY__BROKER_TRANSPORT_OPTIONS
     value: '{"visibility_timeout": 3600}'
   - name: AIRFLOW__CELERY__OPERATION_TIMEOUT
@@ -172,7 +178,7 @@ webserver:
   resources:
     limits:
       cpu: "1000m"
-      memory: "1536Mi"   # Aumentado: 1Gi causaba OOMKilled en dev cluster
+      memory: "2Gi"
     requests:
       cpu: "300m"
       memory: "768Mi"

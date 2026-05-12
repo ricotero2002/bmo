@@ -152,47 +152,78 @@ Excluido:
 docker compose -f data_tooling/docker-compose.spark-airflow.yml up -d --build
 
 
-Pendientes:
-pasar a usar el spark de conection y no local en worker
-sacar (si se puede) los jas del dockerfile
-la parte de metabase
-la parte de el analisis de la ingesta
+
+Me falta:
+Dashboards y BI.
 
 
+2. Metabase + datos del lakehouse
+El metabase-deployment.yaml que ya tenés está bien configurado. El problema es el conector: el plan menciona Spark Thrift en puerto 10000, pero migraste a Spark Connect (gRPC), que Metabase no soporta directamente.
+La solución más simple: materializar gold en PostgreSQL con dbt
+Ya tenés Aiven PostgreSQL. En lugar de conectar Metabase a Spark, usás dbt para escribir las tablas gold como vistas/tablas en Postgres, y Metabase las lee directamente. Metabase tiene soporte nativo excelente para PostgreSQL.
+Agregás un profiles.yml para un target analytics adicional:
+yaml# En dbt/profiles.yml, agregar output adicional
+bmo_lakehouse:
+  target: prod
+  outputs:
+    prod:
+      type: spark
+      method: session
+      host: NA
+      schema: silver
+      threads: 2
 
-10.42.0.154
- ▼ Log message source details
-*** Found logs served from host http://10.42.0.154:8793/log/dag_id=pipeline_llm_telemetry/run_id=manual__2026-05-08T18:34:53+00:00/task_id=spark_evaluate_gold/attempt=5.log
- ▲▲▲ Log group end
-[2026-05-11, 16:59:17 UTC] {local_task_job_runner.py:123} ▶ Pre task execution logs
-[2026-05-11, 16:59:30 UTC] {subprocess.py:78} INFO - Tmp dir root location: /tmp
-[2026-05-11, 16:59:30 UTC] {subprocess.py:88} INFO - Running command: ['/usr/bin/bash', '-c', 'python3 /opt/airflow/tasks/spark_evaluator.py --ds 2026-05-08 --sample-fraction 1 --max-runs 50']
-[2026-05-11, 16:59:30 UTC] {subprocess.py:99} INFO - Output:
-[2026-05-11, 16:59:37 UTC] {subprocess.py:106} INFO - Traceback (most recent call last):
-[2026-05-11, 16:59:37 UTC] {subprocess.py:106} INFO -   File "/opt/airflow/tasks/spark_evaluator.py", line 18, in <module>
-[2026-05-11, 16:59:37 UTC] {subprocess.py:106} INFO -     from src.evals.eval_utils import NvidiaJudge
-[2026-05-11, 16:59:37 UTC] {subprocess.py:106} INFO -   File "/opt/project/src/evals/eval_utils.py", line 8, in <module>
-[2026-05-11, 16:59:37 UTC] {subprocess.py:106} INFO -     from src.providers.record_manager.factory import RecordManagerFactory
-[2026-05-11, 16:59:37 UTC] {subprocess.py:106} INFO -   File "/opt/project/src/providers/record_manager/factory.py", line 6, in <module>
-[2026-05-11, 16:59:37 UTC] {subprocess.py:106} INFO -     from langchain_classic.indexes import SQLRecordManager
-[2026-05-11, 16:59:37 UTC] {subprocess.py:106} INFO - ModuleNotFoundError: No module named 'langchain_classic'
-[2026-05-11, 16:59:37 UTC] {subprocess.py:110} INFO - Command exited with return code 1
-[2026-05-11, 16:59:38 UTC] {taskinstance.py:3313} ERROR - Task failed with exception
-Traceback (most recent call last):
-  File "/home/airflow/.local/lib/python3.11/site-packages/airflow/models/taskinstance.py", line 763, in _execute_task
-    result = _execute_callable(context=context, **execute_callable_kwargs)
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/airflow/.local/lib/python3.11/site-packages/airflow/models/taskinstance.py", line 734, in _execute_callable
-    return ExecutionCallableRunner(
-           ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/airflow/.local/lib/python3.11/site-packages/airflow/utils/operator_helpers.py", line 252, in run
-    return self.func(*args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/airflow/.local/lib/python3.11/site-packages/airflow/models/baseoperator.py", line 424, in wrapper
-    return func(self, *args, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/airflow/.local/lib/python3.11/site-packages/airflow/operators/bash.py", line 276, in execute
-    raise AirflowException(
-airflow.exceptions.AirflowException: Bash command failed. The command returned a non-zero exit code 1.
-[2026-05-11, 16:59:38 UTC] {taskinstance.py:1226} INFO - Marking task as UP_FOR_RETRY. dag_id=pipeline_llm_telemetry, task_id=spark_evaluate_gold, run_id=manual__2026-05-08T18:34:53+00:00, execution_date=20260508T183453, start_date=20260511T165918, end_date=20260511T165938
-[2026-05-11, 16:59:41 UTC] {taskinstance.py:341} ▶ Post task execution logs
+    analytics:          # ← target para Metabase
+      type: postgres
+      host: pg-3ad5269f-bmo.d.aivencloud.com
+      port: 23645
+      user: "{{ env_var('AIVEN_PG_USER') }}"
+      password: "{{ env_var('AIVEN_PG_PASSWORD') }}"
+      dbname: defaultdb
+      schema: analytics
+      threads: 2
+      sslmode: require
+Y en el DAG, agregas un task al final:
+python# pipeline_llm_telemetry.py
+dbt_analytics_task = BashOperator(
+    task_id="dbt_run_analytics",
+    execution_timeout=timedelta(minutes=10),
+    cwd="/opt/airflow/dbt",
+    bash_command=(
+        DBT_BASE.replace("--profiles-dir /opt/airflow/dbt", 
+                         "--profiles-dir /opt/airflow/dbt --target analytics")
+        + "--select models/analytics"
+    ),
+)
+
+# ... >> dbt_gold_task >> dbt_analytics_task >> end
+Los modelos de analytics en dbt son simplemente lecturas de las gold de Iceberg que Spark ya calculó:
+sql-- dbt/models/analytics/mart_agent_quality.sql
+-- {{ config(materialized='table') }}
+
+SELECT
+    date,
+    COUNT(*) AS total_runs,
+    ROUND(AVG(answer_relevancy), 3) AS avg_relevancy,
+    ROUND(AVG(faithfulness), 3) AS avg_faithfulness,
+    COUNT(CASE WHEN answer_relevancy >= 0.7 THEN 1 END) AS passing_runs
+FROM {{ source('gold', 'agent_evaluations') }}
+GROUP BY date
+ORDER BY date DESC
+sql-- dbt/models/analytics/mart_agent_errors.sql  
+-- {{ config(materialized='table') }}
+
+SELECT
+    date,
+    COUNT(*) AS error_count,
+    error_message,
+    COUNT(*) OVER (PARTITION BY date) AS total_errors_that_day
+FROM {{ source('gold', 'agent_errors') }}
+GROUP BY date, error_message
+ORDER BY date DESC, error_count DESC
+Metabase se conecta a Postgres → schema analytics → dashboards directos, sin necesitar Spark ni Iceberg en tiempo de query.
+
+
+Actualizar alembic
+Actualizar todas las imagenes de docker
+probar el webserver

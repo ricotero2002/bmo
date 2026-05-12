@@ -153,6 +153,42 @@ def process_document_task(self, doc_id: str, filename: str, user_id: Optional[st
         status_provider.update_status(job_uuid, "dead", error_msg=f"UNEXPECTED_ERROR: {str(e)}")
         raise e
 
+@celery_app.task(
+    bind=True,
+    name="src.workers.tasks.generate_ingestion_report_task",
+    max_retries=3,
+    default_retry_delay=30,
+)
+def generate_ingestion_report_task(self, doc_id: str, filename: str, strategy: str, 
+                                    chunks_generated: int, processing_time_sec: float,
+                                    sample_text: str, user_id: str):
+    """
+    Genera un reporte amigable usando LLM tras una ingesta exitosa.
+    """
+    try:
+        logger.info(f"Generando reporte de ingesta para {filename} (ID: {doc_id})")
+        prompt = (
+            f"El documento '{filename}' fue procesado en {processing_time_sec:.1f}s "
+            f"con estrategia '{strategy}', generando {chunks_generated} chunks. "
+            f"Contexto: '{sample_text[:300]}'. "
+            f"Redactá un reporte de 2-3 líneas notificando al usuario que está listo."
+        )
+        llm = LLMFactory.create_lite()
+        report_text = llm.invoke(prompt).content
+        
+        status_provider = StatusProvider()
+        status_provider.save_ingestion_report(
+            doc_id=uuid.UUID(doc_id), 
+            report=report_text,
+            chunks=chunks_generated, 
+            strategy=strategy,
+            time_sec=processing_time_sec
+        )
+        return {"status": "ok", "doc_id": doc_id}
+    except Exception as exc:
+        logger.error(f"Error generando reporte para {doc_id}: {exc}")
+        raise self.retry(exc=exc)
+
 @celery_app.task(name="src.workers.tasks.cleanup_expired_cache")
 def cleanup_expired_cache():
     """Task to cleanup expired cache entries (placeholder for now)."""

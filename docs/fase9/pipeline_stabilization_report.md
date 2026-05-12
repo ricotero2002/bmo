@@ -1,30 +1,36 @@
 # Pipeline LLM Telemetry — Reporte de Estabilización Fase 9
 
-> **Fecha:** 2026-05-10  
-> **Entorno:** K3d (WSL2) → OCI Object Storage → Apache Iceberg 1.5.2 → Airflow 2.10.5
+> **Fecha:** 2026-05-11  
+> **Estado:** Estabilizado ✅  
+> **Entorno:** K3d (WSL2) → OCI Object Storage → Apache Iceberg 1.5.2 → Airflow 2.10.5 (CeleryExecutor)
 
 ---
 
-## 1. Arquitectura del Pipeline
+## 1. Arquitectura del Pipeline (Evolución)
 
+Originalmente, el pipeline operaba con Spark local en cada worker. Tras la Fase 9, hemos migrado a una arquitectura desacoplada mediante **Spark Connect**.
+
+### 1.1 Diagrama de Flujo Actualizado
 ```
 LangSmith API
      │
      ▼
 [extract_from_langsmith]  (PythonOperator)
-     │  boto3 → s3://bronze/langsmith_raw/date=YYYY-MM-DD/chunk_N.parquet
+     │  boto3 → s3://bronze/langsmith_raw/date=YYYY-MM-DD/
      ▼
-[register_bronze_iceberg]  (BashOperator → spark-submit)
-     │  boto3 descarga /tmp → Spark lee local → S3FileIO escribe Iceberg Bronze
+[register_bronze_iceberg] (BashOperator → Spark Connect Client)
+     │  Escribe en lakehouse.bronze.langsmith_raw via gRPC
      ▼
-[dbt_run_silver]  (BashOperator → dbt via Thrift)
-     │  Bronze Iceberg → Silver Iceberg (stg_agent_runs, stg_agent_run_anomalies)
+[dbt_run_silver]          (BashOperator → dbt via Thrift)
+     │  Bronze Iceberg → Silver Iceberg (stg_agent_runs)
      ▼
-[spark_evaluate_gold]  (BashOperator → spark-submit)
-     │  Silver Iceberg → NvidiaJudge UDF → Gold Iceberg (agent_evaluations, agent_errors)
+[spark_evaluate_gold]     (BashOperator → Spark Connect Client)
+     │  1. Spark filtra Silver → .toPandas() al Worker
+     │  2. Worker evalúa con DeepEval/NIM (Local Python)
+     │  3. Spark escribe Gold via gRPC
      ▼
-[dbt_run_gold]  (BashOperator → dbt via Thrift)
-     │  Gold Iceberg → fact_agent_performance, fact_evaluations, fact_llm_costs
+[dbt_run_gold]            (BashOperator → dbt via Thrift)
+     │  Agregación final de métricas y costos
      ▼
 [end]
 ```
@@ -290,114 +296,55 @@ El Thrift Server al conectar al catálogo REST busca el namespace `default`. Si 
 
 ---
 
-## 4. Estado Actual por Tarea del DAG
+## 4. Estabilización Final (Fase 9) — Arquitectura Spark Connect
 
-| Tarea | Estado | Bloqueante |
-|---|---|---|
-| `extract_from_langsmith` | ✅ **FUNCIONA** | — |
-| `register_bronze_iceberg` | ✅ **FUNCIONA** | — |
-| `dbt_run_silver` | ❌ **ROTO** | profiles.yml + dbt dir faltante + Thrift |
-| `spark_evaluate_gold` | ⚠️ **PARCIAL** | Checkpoint S3A + NvidiaJudge deps |
-| `dbt_run_gold` | ❌ **ROTO** | Mismo que silver |
+Tras los problemas de recursos y compatibilidad detectados, se realizó una reingeniería del pipeline para desacoplar el cómputo de Spark del worker de Airflow.
 
----
+### 4.1 Migración a Spark Connect (Servidor Centralizado)
+Se eliminó la necesidad de tener Java y JARs pesados en cada worker de Airflow.
+- **Servidor (`02-spark-connect.yaml`)**: Centraliza la resolución de paquetes Maven (`iceberg-spark-runtime`, `hadoop-aws`, etc.).
+- **Worker Client**: Ahora es un "thin client" que solo usa `pyspark[connect]`.
+- **Beneficio**: Reducción drástica del tamaño de la imagen de Airflow y del consumo de RAM por pod.
 
-## 5. Fixes Pendientes — Roadmap
+### 4.2 Refactor de Evaluación (`spark_evaluator.py`)
+Se resolvió la imposibilidad de correr `deepeval` y `NvidiaJudge` en ejecutores Spark remotos.
+- **Patrón "Collect -> Evaluate -> Write"**:
+    1. Spark filtra la muestra en el servidor remetodo.
+    2. Los datos se descargan al worker mediante `.toPandas()`.
+    3. La evaluación ocurre en Python nativo en el worker (donde están todas las dependencias de IA y conectividad a NVIDIA NIM).
+    4. Los resultados se suben a Iceberg como un DataFrame de Spark.
 
-### 🔴 Alta Prioridad (bloquean el E2E)
-
-1. **Checkpoint local en `spark_evaluator.py`** (5 min)
-   ```python
-   spark.sparkContext.setCheckpointDir("/tmp/spark-checkpoints/")
-   ```
-
-2. **Copiar dbt en Dockerfile** (5 min)
-   ```dockerfile
-   COPY data_tooling/dbt/ /opt/airflow/dbt/
-   ```
-
-3. **Actualizar `profiles.yml`** para K8s con OCI (15 min)
-
-4. **Job K8s para inicializar namespaces del catálogo REST** (30 min)
-
-### 🟡 Media Prioridad
-
-5. **Validar `NVIDIA_API_KEY`** en el secret `app-secrets` de Infisical
-
-6. **`--driver-memory 1g`** en `SPARK_BASE` del DAG:
-   ```python
-   SPARK_BASE = f"spark-submit --master 'local[2]' --driver-memory 1g --packages ..."
-   ```
-
-7. **Eliminar `spark.sql.defaultCatalog=lakehouse`** del Thrift Server para evitar el conflicto con el namespace `default`
-
-### 🟢 Mejoras Futuras
-
-8. **Cachear JARs de Spark en la imagen Docker** para evitar descargas de Maven en cada ejecución (~60s y falla sin internet)
-
-9. **Migrar lectura Bronze a Iceberg nativo** cuando `hadoop-aws` tenga soporte completo de OCI Payload Signing (v3.4+)
-
-10. **Reemplazar Thrift por dbt-iceberg** con REST catalog directo, eliminando el Thrift Server como intermediario
-
-11. **Paralelizar evaluaciones** en `spark_evaluator.py` usando async o pool de requests a Nvidia NIM en lugar de 1 por fila
-
-12. **Agregar timeout al `BashOperator`** del DAG para tasks Spark pesadas:
-    ```python
-    register_bronze_task = BashOperator(
-        execution_timeout=timedelta(minutes=30),
-        ...
-    )
-    ```
+### 4.3 Optimización de Infraestructura Airflow (K8s)
+- **PgBouncer**: Implementado para mitigar la saturación de conexiones hacia la base de datos de metadatos (Aiven).
+- **KEDA (Scaling)**: Configurado con `minReplicaCount: 0`. Los workers solo existen cuando hay tareas pendientes.
+- **Limpieza de Dependencias**: Se implementó **lazy loading** en los providers del proyecto para evitar que la falta de librerías pesadas bloquee la ejecución de DAGs ligeros.
 
 ---
 
-## 6. Configuración Final Estabilizada
+## 5. Estado Final de Tareas del DAG
 
-### `spark_utils.py` — Configuraciones clave OCI
-```python
-# Fix SDK v2
-os.environ.setdefault("AWS_REGION", region)
-os.environ.setdefault("AWS_DEFAULT_REGION", region)
+| Tarea | Estado | Solución Aplicada |
+| :--- | :--- | :--- |
+| `extract_from_langsmith` | ✅ **OK** | boto3 nativo con payload signing. |
+| `register_bronze_iceberg` | ✅ **OK** | Migrado a Spark Connect Client. |
+| `dbt_run_silver` | ✅ **OK** | Profiles.yml actualizado para K8s y OCI. |
+| `spark_evaluate_gold` | ✅ **OK** | Refactorizado para evaluación local en worker (Pandas). |
+| `dbt_run_gold` | ✅ **OK** | Ejecución final de agregaciones. |
 
-# Iceberg catalog
-.config("spark.sql.catalog.lakehouse.s3.payload-signing-enabled", "true")
-.config("spark.sql.catalog.lakehouse.s3.checksum-enabled", "false")
-.config("spark.sql.catalog.lakehouse.client.region", region)
+---
 
-# Hadoop S3A (warehouse solamente)
-.config("spark.hadoop.fs.s3a.signing-algorithm", "AWS4SignerType")
-.config("spark.hadoop.fs.s3a.fast.upload.buffer", "disk")  # ← Key fix OOM
-```
+## 6. Resumen de Errores Críticos Resueltos en Fase 9
 
-### `helm-values.yaml` — Worker
-```yaml
-workers:
-  keda:
-    enabled: true
-    minReplicaCount: 0
-    maxReplicaCount: 1
-  resources:
-    requests: { cpu: "1", memory: "4Gi" }
-    limits:   { cpu: "2", memory: "5Gi" }
-  livenessProbe:
-    initialDelaySeconds: 120
-    timeoutSeconds: 60
-    periodSeconds: 60
-    failureThreshold: 20
-```
+| Error | Causa | Solución |
+| :--- | :--- | :--- |
+| `DATA_SOURCE_NOT_FOUND: iceberg` | Falta de JARs en el servidor | Inyección correcta vía `--packages` en el server. |
+| `PySparkNotImplementedError` | Incompatibilidad con Connect | Refactor de `spark_utils.py` para eliminar `sparkContext`. |
+| `ModuleNotFoundError: langchain_classic` | Dependencias en worker | Imports dinámicos y limpieza de `requirements.txt`. |
+| `StatusCode.UNAVAILABLE` | Espacios en YAML de paquetes | Fix de sintaxis en el comando de arranque del servidor. |
 
-### Diagrama de Conectividad Validada
-```
-Worker Pod
-    ├─ boto3 (s3v4 + payload_signing)  →  OCI bronze  ✅
-    ├─ Spark S3FileIO (SDK v2 + AWS_REGION)  →  OCI warehouse  ✅
-    └─ Spark S3A (SDK v1 hadoop-aws)  →  OCI ANY  ❌ 403 (workaround: no usar)
+---
 
-Thrift Pod
-    ├─ JDBC/Beeline  →  localhost:10000  ❌ (namespace default issue)
-    └─ Iceberg REST  →  iceberg-rest-svc:8181  ✅
-```
-
-
-
-
+## 7. Mejoras Futuras (Post-Estabilización)
+1. **Cachear JARs**: Pre-instalar los JARs de Iceberg en la imagen de Spark Connect para acelerar el arranque.
+2. **Paralelización**: Implementar threads en el loop de evaluación para llamadas concurrentes a NVIDIA NIM.
+3. **Monitoreo**: Integración total de la capa Gold en Metabase.

@@ -67,6 +67,20 @@ class StatusProvider:
         finally:
             session.close()
 
+    def save_ingestion_report(self, doc_id: uuid.UUID, report: str, chunks: int, strategy: str, time_sec: float):
+        """Guarda el reporte generado por LLM y las métricas de procesamiento."""
+        session = self.Session()
+        try:
+            job = session.query(IngestionJob).filter(IngestionJob.doc_id == doc_id).first()
+            if job:
+                job.report = report
+                job.chunks_count = chunks
+                job.strategy = strategy
+                job.processing_time = int(time_sec)
+                session.commit()
+        finally:
+            session.close()
+
     def get_job(self, doc_id: uuid.UUID) -> Optional[dict]:
         session = self.Session()
         try:

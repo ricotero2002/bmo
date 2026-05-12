@@ -1,8 +1,6 @@
 from typing import Optional, Type
 from pydantic import BaseModel
-from langchain_openrouter import ChatOpenRouter
-from langchain_ollama import ChatOllama
-from langchain_core.language_models.chat_models import BaseChatModel
+
 
 class LLMFactory:
     """Fábrica de modelos nativa usando NVIDIA NIM y fallbacks."""
@@ -26,8 +24,8 @@ class LLMFactory:
     PLANNER_PRIMARY = "qwen/qwen3-coder-480b-a35b-instruct"
     
     # JUDGES -> Mantenemos los que ya sabemos que devuelven JSON impecable
-    JUDGE_PRIMARY = "abacusai/dracarys-llama-3.1-70b-instruct"
-    JUDGE_SECONDARY = "meta/llama-4-maverick-17b-128e-instruct"
+    JUDGE_PRIMARY   = "abacusai/dracarys-llama-3.1-70b-instruct"
+    JUDGE_SECONDARY = "mistralai/mistral-large-3-675b-instruct-2512"
     
     # CODER -> Qwen3 Coder es top tier mundial y está en la capa gratuita
     CODER_PRIMARY = "qwen/qwen3-coder-480b-a35b-instruct"
@@ -59,7 +57,8 @@ class LLMFactory:
         nim_prefixes = (
             "meta/", "nvidia/", "mistralai/", "google/", "deepseek-ai/", 
             "moonshotai/", "qwen/", "z.ai/", "stepfun-ai/", "bytedance/", 
-            "minimaxai/", "abacus.ai/"
+            "minimaxai/", "abacus.ai/",
+            "abacusai/",    # ← fix: sin punto, como viene el nombre en la API
         )
 
         for name in model_names:
@@ -76,6 +75,7 @@ class LLMFactory:
                     max_tokens=8192,  # Evita que el JSON se ampute y cause errores 500 en NIM
                 ))
             elif name.startswith("ollama/"):
+                from langchain_ollama import ChatOllama
                 from src.core.config import settings
                 real_name = name.replace("ollama/", "")
                 models.append(ChatOllama(
@@ -128,8 +128,9 @@ class LLMFactory:
         return model_with_fallbacks
 
     @classmethod
-    def create(cls, tools = None, response_format: Optional[Type[BaseModel]] = None) -> BaseChatModel:
+    def create(cls, tools = None, response_format: Optional[Type[BaseModel]] = None):
         """Modelo principal de razonamiento pesado."""
+        from langchain_core.language_models.chat_models import BaseChatModel
         if tools is not None:
             # LISTA DE MODELOS A PRUEBA DE BALAS PARA TOOL CALLING
             tool_models = [
@@ -144,31 +145,32 @@ class LLMFactory:
         return cls._bind_and_fallback(models, tools, response_format)
 
     @classmethod
-    def create_lite(cls, tools = None, response_format: Optional[Type[BaseModel]] = None) -> BaseChatModel:
+    def create_lite(cls, tools = None, response_format: Optional[Type[BaseModel]] = None):
         """Modelo rápido para resumen, extracción y clasificación liviana."""
         models = cls._build_models_from_names(cls.LITE_MODEL_NAMES)
         return cls._bind_and_fallback(models, tools, response_format)
 
     @classmethod
-    def create_planner(cls, tools=None, response_format: Optional[Type[BaseModel]] = None) -> BaseChatModel:
+    def create_planner(cls, tools=None, response_format: Optional[Type[BaseModel]] = None):
         """Especialista de planificación, prioriza un modelo thinking."""
         model_names = cls._dedupe_preserve_order([cls.PLANNER_PRIMARY, *cls.LITE_MODEL_NAMES])
         models = cls._build_models_from_names(model_names)
         return cls._bind_and_fallback(models, tools, response_format)
 
     @classmethod
-    def create_judge(cls, tools=None, response_format: Optional[Type[BaseModel]] = None) -> BaseChatModel:
-        """Especialista de evaluación crítica (faithfulness/relevancy)."""
-        model_names = cls._dedupe_preserve_order([
+    def create_judge(cls, tools=None, response_format: Optional[Type[BaseModel]] = None):
+        """Especialista de evaluación crítica (faithfulness/relevancy). Solo NIM."""
+        model_names = [
             cls.JUDGE_PRIMARY,
             cls.JUDGE_SECONDARY,
-            *cls.HEAVY_MODEL_NAMES,
-        ])
+            "meta/llama-4-maverick-17b-128e-instruct",
+            # NO incluir HEAVY_MODEL_NAMES — tiene qwen3 con thinking
+        ]
         models = cls._build_models_from_names(model_names)
         return cls._bind_and_fallback(models, tools, response_format)
 
     @classmethod
-    def create_coder(cls, tools=None, response_format: Optional[Type[BaseModel]] = None) -> BaseChatModel:
+    def create_coder(cls, tools=None, response_format: Optional[Type[BaseModel]] = None):
         """Especialista en estructura/JSON para tasks de chunking agentico."""
         model_names = cls._dedupe_preserve_order([cls.CODER_PRIMARY, *cls.LITE_MODEL_NAMES])
         models = cls._build_models_from_names(model_names)
