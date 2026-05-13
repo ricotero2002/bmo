@@ -44,7 +44,7 @@ spec:
         # Aiven siempre te da el host, puerto, user y pass en variables separadas en Infisical.
         # Construimos la URL limpia sin credenciales inyectadas en el string:
         - name: CATALOG_URI
-          value: "jdbc:postgresql://$(AIVEN_PG_HOST):23645/$(AIVEN_PG_DB)?sslmode=require"
+          value: "jdbc:postgresql://bmo-airflow-pgbouncer.personal-ai.svc.cluster.local:6543/airflow-metadata"
         # Pasamos las credenciales a Java explícitamente mediante las variables que el servidor entiende:
         - name: CATALOG_JDBC_USER
           value: "$(AIVEN_PG_USER)"

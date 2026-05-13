@@ -90,10 +90,18 @@ class StatusProvider:
                     "doc_id": job.doc_id,
                     "user_id": job.user_id,
                     "batch_id": job.batch_id,
+                    "source_path": job.source_path,
                     "status": job.status,
                     "attempts": job.attempts,
                     "error_msg": job.error_msg,
-                    "created_at": job.created_at
+                    "metadata": job.metadata_json,
+                    "file_hash": job.file_hash,
+                    "report": job.report,
+                    "chunks_count": job.chunks_count,
+                    "strategy": job.strategy,
+                    "processing_time": job.processing_time,
+                    "created_at": job.created_at,
+                    "updated_at": job.updated_at
                 }
             return None
         finally:
@@ -113,10 +121,18 @@ class StatusProvider:
                     "doc_id": job.doc_id,
                     "user_id": job.user_id,
                     "batch_id": job.batch_id,
+                    "source_path": job.source_path,
                     "status": job.status,
                     "attempts": job.attempts,
                     "error_msg": job.error_msg,
+                    "metadata": job.metadata_json,
+                    "file_hash": job.file_hash,
+                    "report": job.report,
+                    "chunks_count": job.chunks_count,
+                    "strategy": job.strategy,
+                    "processing_time": job.processing_time,
                     "created_at": job.created_at,
+                    "updated_at": job.updated_at,
                 }
             return None
         finally:
@@ -348,7 +364,11 @@ class StatusProvider:
                     "filename": j.source_path,
                     "status": j.status,
                     "attempts": j.attempts,
-                    "error_msg": j.error_msg
+                    "error_msg": j.error_msg,
+                    "report": j.report,
+                    "chunks_count": j.chunks_count,
+                    "strategy": j.strategy,
+                    "processing_time": j.processing_time
                 } for j in jobs
             ]
 

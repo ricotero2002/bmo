@@ -16,6 +16,11 @@ MAX_RETRIES = 2
 
 _RETRIEVER_TOOL_NAME = "knowledge_base_retriever"
 
+# Categorías para enrutamiento inteligente
+READ_TOOLS = {_RETRIEVER_TOOL_NAME, "web_search", "open_weather_map"}
+ACTION_TOOLS = {"save_note_to_knowledge_base"}
+
+
 
 class AgentService:
     def __init__(self, llm_factory, tools, checkpointer):
@@ -235,17 +240,26 @@ class AgentService:
             logger.warning("Agent generated empty content and no retrieval context found. Routing to cleanup.")
             return Command(goto="cleanup_rag_memory")
 
-        # Si el agente generó texto, verificar si en el turno actual
-        # se usó el retriever o búsqueda web — si es así, siempre pasar por validación
-        retriever_used = any(
-            msg.type == "tool" and msg.name in [_RETRIEVER_TOOL_NAME, "web_search"]
-            for msg in current_turn_msgs
-        )
-        if retriever_used:
-            return Command(goto="grade_generation_vs_documents")
+        # Identificar las herramientas usadas en este turno en ORDEN de ejecución
+        tools_used_in_turn = [msg.name for msg in current_turn_msgs if msg.type == "tool"]
 
-        # Si la conversación es muy larga, la resumimos
-        return Command(goto="cleanup_rag_memory")
+        if tools_used_in_turn:
+            # Miramos cuál fue la ÚLTIMA herramienta ejecutada antes de que el LLM generara este texto
+            last_tool = tools_used_in_turn[-1]
+            
+            if last_tool in READ_TOOLS:
+                # Intención: Síntesis de información.
+                # El agente acaba de leer documentos, debemos evitar que invente datos.
+                return Command(goto="grade_generation_vs_documents")
+            else:
+                # Intención: Confirmación de acción (ej. ACTION_TOOLS como guardar_nota).
+                # El agente está confirmando que ejecutó un comando. No tiene sentido 
+                # evaluar alucinaciones aquí, vamos directo a evaluar completitud.
+                return Command(goto="grade_task_completion")
+        
+        # Si no se usó ninguna herramienta (charla casual) o ya pasó por síntesis,
+        # verificamos si el plan está completo antes de limpiar memoria.
+        return Command(goto="grade_task_completion")
 
     async def _route_after_tools(self, state: GraphState) -> str:
         """Enruta los mensajes dependiendo de qué herramienta se acaba de ejecutar."""
@@ -259,14 +273,12 @@ class AgentService:
             elif msg.type == "ai":
                 break # Llegamos al mensaje donde el LLM pidió las tools, paramos de mirar hacia atrás
                 
-        retrieval_tools = [_RETRIEVER_TOOL_NAME, "web_search"]
-        
-        # Si usó alguna herramienta de búsqueda de información, hay que evaluar los documentos
-        if any(name in retrieval_tools for name in tool_names):
+        # Si usó alguna herramienta de lectura de información, hay que evaluar la relevancia
+        if any(name in READ_TOOLS for name in tool_names):
             return "grade_documents"
             
-        # Si usó una herramienta de acción (ej. save_note_to_knowledge_base, open_weather_map)
-        # No hay documentos que evaluar, volvemos al agente para que genere la respuesta final.
+        # Si usó una herramienta de acción pura o no hubo herramientas de lectura
+        # Volvemos al agente para que genere la respuesta final o confirmación.
         return "agent"
 
     async def _tools_router(self, state: GraphState) -> str:
@@ -282,7 +294,7 @@ class AgentService:
         # Solo buscamos en los mensajes que acaban de ocurrir (último turno)
         for msg in reversed(state["messages"]):
             if msg.type == "tool":
-                if msg.name in [_RETRIEVER_TOOL_NAME, "web_search"]:
+                if msg.name in READ_TOOLS:
                     has_search_tool = True
                     docs_content += f"\n{msg.content}"
                     if TOOL_ERROR_PREFIX in str(msg.content):
@@ -394,7 +406,7 @@ class AgentService:
 
         docs_content = ""
         for msg in current_turn_msgs:
-            if msg.type == "tool" and msg.name in [_RETRIEVER_TOOL_NAME, "web_search"]:
+            if msg.type == "tool" and msg.name in READ_TOOLS:
                 docs_content += f"\n{msg.content}"
 
         if not docs_content:

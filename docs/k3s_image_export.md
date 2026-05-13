@@ -48,6 +48,10 @@ spec:
 
 helm upgrade --install bmo-airflow apache-airflow/airflow --version 1.16.0 -n personal-ai -f k8s/airflow/helm-values.yaml
 
+helm repo add trino https://trinodb.github.io/charts
+helm install trino trino/trino -f k8s/lakehouse/trino-values.yaml -n personal-ai
+helm upgrade trino trino/trino -f k8s/lakehouse/trino-values.yaml -n personal-ai
+
 # Reiniciar Deployments
 kubectl rollout restart deployment/bmo-airflow-scheduler -n personal-ai
 kubectl rollout restart deployment/bmo-airflow-webserver -n personal-ai

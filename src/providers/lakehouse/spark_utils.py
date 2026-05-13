@@ -1,29 +1,30 @@
 import os
 import logging
 from pyspark.sql import SparkSession
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+@retry(
+    # Spark Connect tarda hasta 120s en arrancar; reintentamos por 3 min
+    stop=stop_after_attempt(15),
+    wait=wait_exponential(multiplier=1, min=10, max=30),
+    retry=retry_if_exception_type(Exception),
+    reraise=True,
+)
+def _connect_remote(builder, remote_url: str):
+    """Intenta conectar a Spark Connect con reintentos para cold start."""
+    return builder.remote(remote_url).getOrCreate()
+
+
 def get_iceberg_spark_session(app_name: str) -> SparkSession:
     """
     SparkSession configurada para Iceberg REST + OCI Object Storage.
-
-    PROBLEMA RESUELTO: spark-submit no hereda las env vars de Python como
-    Hadoop properties. Las credenciales DEBEN pasarse como spark.hadoop.fs.s3a.*
-    explícitamente — leerlas con os.getenv() en Python no es suficiente para
-    que S3AFileSystem las use en el JVM.
-
-    OCI S3-compat requiere además:
-      - addressing_style = path  (no virtual-hosted)
-      - signing-algorithm = AWS4SignerType (firma v4)
-      - endpoint explícito con el namespace del tenant
-      - SimpleAWSCredentialsProvider (no DefaultAWSCredentialsProviderChain)
     """
     namespace = os.getenv("OCI_NAMESPACE")
     region = os.getenv("OCI_REGION", "us-ashburn-1")
-    # Bucket real en OCI — NO usar nombres de zona lógica como "bronze" como bucket name
     oci_bucket = os.getenv("OCI_BUCKET_NAME", "bmo-documents")
     rest_uri = os.getenv(
         "LAKEHOUSE_REST_URI",
@@ -35,26 +36,18 @@ def get_iceberg_spark_session(app_name: str) -> SparkSession:
         secret_key = os.getenv("OCI_SECRET_KEY")
         s3_endpoint = f"https://{namespace}.compat.objectstorage.{region}.oraclecloud.com"
         ssl_enabled = "true"
-        # El SDK v2 de Iceberg busca AWS_REGION; seteamos explícitamente
         os.environ.setdefault("AWS_REGION", region)
         os.environ.setdefault("AWS_DEFAULT_REGION", region)
         logger.info(f"SparkSession '{app_name}' → OCI endpoint: {s3_endpoint} | bucket: {oci_bucket}")
     else:
         access_key = os.getenv("MINIO_ROOT_USER", "lakehouse")
         secret_key = os.getenv("MINIO_ROOT_PASSWORD", "lakehouse123")
-        s3_endpoint = (
-            os.getenv("MINIO_ENDPOINT")
-            or os.getenv("LAKEHOUSE_S3_ENDPOINT")
-            or "http://minio-svc:9000"
-        )
+        s3_endpoint = "http://minio-svc:9000"
         ssl_enabled = "false"
         logger.info(f"SparkSession '{app_name}' → MinIO endpoint: {s3_endpoint}")
 
     if not access_key or not secret_key:
-        raise ValueError(
-            "Credenciales no encontradas. "
-            "Verificá OCI_ACCESS_KEY y OCI_SECRET_KEY en los secrets del pod."
-        )
+        raise ValueError("Credenciales no encontradas.")
 
     packages = ",".join([
         "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.2",
@@ -63,16 +56,15 @@ def get_iceberg_spark_session(app_name: str) -> SparkSession:
     ])
 
     remote_url = os.getenv("SPARK_REMOTE")
-    
     builder = SparkSession.builder.appName(app_name)
 
     if remote_url:
-        logger.info(f"🌐 Intentando conectar a Spark Connect en: {remote_url} ...")
+        logger.info(f"🌐 Conectando a Spark Connect en: {remote_url} ...")
         try:
-            spark = builder.remote(remote_url).getOrCreate()
+            spark = _connect_remote(builder, remote_url)
             logger.info("✅ Conexión establecida con Spark Connect.")
         except Exception as e:
-            logger.error(f"❌ Error conectando a Spark Connect: {e}")
+            logger.error(f"❌ No se pudo conectar tras reintentos: {e}")
             raise
     else:
         logger.info(f"🏠 Iniciando Spark Session LOCAL (Legacy)")

@@ -1,0 +1,19 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: spark-connect-scaler
+  namespace: personal-ai
+spec:
+  scaleTargetRef:
+    name: spark-connect
+  minReplicaCount: 0
+  maxReplicaCount: 1
+  # 10 min después del último worker de Airflow -> apagar Spark
+  cooldownPeriod: 600
+  pollingInterval: 10
+  triggers:
+  - type: kubernetes-workload
+    metadata:
+      podSelector: "component=worker,tier=airflow"
+      namespace: personal-ai
+      value: "1"

@@ -1,0 +1,24 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: trino-workers-scaler
+  namespace: personal-ai
+spec:
+  scaleTargetRef:
+    name: trino-worker
+  minReplicaCount: 0
+  maxReplicaCount: 1
+  # 10 min sin queries -> baja a 0
+  cooldownPeriod: 600
+  pollingInterval: 15
+  triggers:
+  - type: metrics-api
+    metadata:
+      url: "http://trino.personal-ai.svc.cluster.local:8080/v1/cluster"
+      valueLocation: "runningQueries"
+      targetValue: "1"
+  - type: metrics-api
+    metadata:
+      url: "http://trino.personal-ai.svc.cluster.local:8080/v1/cluster"
+      valueLocation: "queuedQueries"
+      targetValue: "1"

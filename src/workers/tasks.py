@@ -126,6 +126,24 @@ def process_document_task(self, doc_id: str, filename: str, user_id: Optional[st
         # -----------------------
 
         logger.info(f"Procesamiento completado para {filename}")
+        
+        # 8. Lanzar tarea de generación de reporte (Fase 9)
+        # Obtenemos la estrategia del primer chunk (agentic o markdown)
+        strategy_used = chunks[0].metadata.get("chunk_type", "unknown") if chunks else "unknown"
+        
+        generate_ingestion_report_task.apply_async(
+            kwargs={
+                "doc_id": doc_id,
+                "filename": filename,
+                "strategy": strategy_used,
+                "chunks_generated": len(chunks),
+                "processing_time_sec": time.time() - start_time,
+                "sample_text": text[:500],
+                "user_id": user_id
+            },
+            queue="ingest_q"
+        )
+
         return {
             "status": "completed",
             "doc_id": doc_id,

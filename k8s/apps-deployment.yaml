@@ -39,6 +39,13 @@ spec:
             name: api-service
             port:
               number: 80
+      - path: /metabase
+        pathType: Prefix
+        backend:
+          service:
+            name: metabase-service
+            port:
+              number: 3000
 
 ---
 # 4. Deployment de FastAPI
@@ -172,3 +179,68 @@ spec:
     port: 9808
     targetPort: 9808
   type: ClusterIP
+
+---
+# 6. Deployment de Metabase
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metabase
+  namespace: personal-ai
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: metabase
+  template:
+    metadata:
+      labels:
+        app: metabase
+    spec:
+      hostAliases:
+      - ip: "172.19.0.1"
+        hostnames:
+        - "host.k3d.internal"
+      containers:
+      - name: metabase
+        image: metabase/metabase:latest
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+          limits:
+            cpu: "1000m"
+            memory: "2Gi"
+        ports:
+        - containerPort: 3000
+        envFrom:
+        - secretRef:
+            name: app-secrets # Para AIVEN_PG_...
+        env:
+        - name: MB_DB_TYPE
+          value: "postgres"
+        - name: MB_DB_DBNAME
+          value: "$(AIVEN_PG_DB)"
+        - name: MB_DB_PORT
+          value: "23645"
+        - name: MB_DB_USER
+          value: "$(AIVEN_PG_USER)"
+        - name: MB_DB_PASS
+          value: "$(AIVEN_PG_PASSWORD)"
+        - name: MB_DB_HOST
+          value: "$(AIVEN_PG_HOST)"
+
+---
+# 7. Service de Metabase
+apiVersion: v1
+kind: Service
+metadata:
+  name: metabase-service
+  namespace: personal-ai
+spec:
+  selector:
+    app: metabase
+  ports:
+  - port: 3000
+    targetPort: 3000
+  type: ClusterIP

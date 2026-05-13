@@ -154,76 +154,28 @@ docker compose -f data_tooling/docker-compose.spark-airflow.yml up -d --build
 
 
 Me falta:
-Dashboards y BI.
+Probar lo de keda
+    Aplicar los yamls de trino y el de keda de spark connect.
+        # 1. Actualizar Trino
+        helm upgrade trino trino/trino -f k8s/lakehouse/trino-values.yaml -n personal-ai
+
+        # 2. Aplicar los escaladores de KEDA
+        kubectl apply -f k8s/lakehouse/trino-keda.yaml
+        kubectl apply -f k8s/lakehouse/spark-connect-keda.yaml
+
+    Ademas ahora tengo la imagen de spark personalizada tambien:
+
+        docker build -t personal_ai_spark_connect:latest -f docker/spark/Dockerfile.spark-connect .
+
+        # Importar al clúster k3d (ajusta 'bmo' por el nombre de tu clúster si es distinto)
+        k3d image import personal_ai_spark_connect:latest -c bmo
+        kubectl apply -f k8s/lakehouse/02-spark-connect.yaml
 
 
-2. Metabase + datos del lakehouse
-El metabase-deployment.yaml que ya tenés está bien configurado. El problema es el conector: el plan menciona Spark Thrift en puerto 10000, pero migraste a Spark Connect (gRPC), que Metabase no soporta directamente.
-La solución más simple: materializar gold en PostgreSQL con dbt
-Ya tenés Aiven PostgreSQL. En lugar de conectar Metabase a Spark, usás dbt para escribir las tablas gold como vistas/tablas en Postgres, y Metabase las lee directamente. Metabase tiene soporte nativo excelente para PostgreSQL.
-Agregás un profiles.yml para un target analytics adicional:
-yaml# En dbt/profiles.yml, agregar output adicional
-bmo_lakehouse:
-  target: prod
-  outputs:
-    prod:
-      type: spark
-      method: session
-      host: NA
-      schema: silver
-      threads: 2
-
-    analytics:          # ← target para Metabase
-      type: postgres
-      host: pg-3ad5269f-bmo.d.aivencloud.com
-      port: 23645
-      user: "{{ env_var('AIVEN_PG_USER') }}"
-      password: "{{ env_var('AIVEN_PG_PASSWORD') }}"
-      dbname: defaultdb
-      schema: analytics
-      threads: 2
-      sslmode: require
-Y en el DAG, agregas un task al final:
-python# pipeline_llm_telemetry.py
-dbt_analytics_task = BashOperator(
-    task_id="dbt_run_analytics",
-    execution_timeout=timedelta(minutes=10),
-    cwd="/opt/airflow/dbt",
-    bash_command=(
-        DBT_BASE.replace("--profiles-dir /opt/airflow/dbt", 
-                         "--profiles-dir /opt/airflow/dbt --target analytics")
-        + "--select models/analytics"
-    ),
-)
-
-# ... >> dbt_gold_task >> dbt_analytics_task >> end
-Los modelos de analytics en dbt son simplemente lecturas de las gold de Iceberg que Spark ya calculó:
-sql-- dbt/models/analytics/mart_agent_quality.sql
--- {{ config(materialized='table') }}
-
-SELECT
-    date,
-    COUNT(*) AS total_runs,
-    ROUND(AVG(answer_relevancy), 3) AS avg_relevancy,
-    ROUND(AVG(faithfulness), 3) AS avg_faithfulness,
-    COUNT(CASE WHEN answer_relevancy >= 0.7 THEN 1 END) AS passing_runs
-FROM {{ source('gold', 'agent_evaluations') }}
-GROUP BY date
-ORDER BY date DESC
-sql-- dbt/models/analytics/mart_agent_errors.sql  
--- {{ config(materialized='table') }}
-
-SELECT
-    date,
-    COUNT(*) AS error_count,
-    error_message,
-    COUNT(*) OVER (PARTITION BY date) AS total_errors_that_day
-FROM {{ source('gold', 'agent_errors') }}
-GROUP BY date, error_message
-ORDER BY date DESC, error_count DESC
-Metabase se conecta a Postgres → schema analytics → dashboards directos, sin necesitar Spark ni Iceberg en tiempo de query.
+    Como actualize spark utilities tengo que actualizar el docker image de airflow
+        Docker build e import
 
 
-Actualizar alembic
-Actualizar todas las imagenes de docker
-probar el webserver
+Conectar con ORACLE, y hacer sus preguntas en metabase.
+Fijarse bien que quiero ver en grafana cloud y hacer bien sus dashboards o queryes, etc. (si quiero ver en tiempo real errores, o estadisticas de kuberenetes o cantidad de llaamadas a diferetnes apies o lo que sea pero ahora si acomodar bien cada cosa que funcione todo)
+Ver lo nuevo que queria agregar al agente.
