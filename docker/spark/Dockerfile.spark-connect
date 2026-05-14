@@ -1,24 +1,33 @@
 # docker/spark/Dockerfile.spark-connect
 FROM apache/spark:3.5.1
 
-# Usuario root para instalar dependencias y crear carpetas
 USER root
 
-# Pre-descargar JARs en el build para eliminar el tiempo de descarga en runtime
-# El pod arrancará en ~15s en lugar de ~120s
-RUN /opt/spark/bin/spark-class org.apache.spark.deploy.SparkSubmit \
-    --packages "org.apache.spark:spark-connect_2.12:3.5.1,\
-org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.2,\
-org.apache.iceberg:iceberg-aws-bundle:1.5.2,\
-org.apache.hadoop:hadoop-aws:3.3.4,\
-com.amazonaws:aws-java-sdk-bundle:1.12.262" \
-    --conf "spark.jars.ivy=/opt/spark/.ivy2" \
-    --dry-run 2>/dev/null || true
+# Descargar JARs directamente a /opt/spark/jars/ — el directorio que Spark
+# agrega al classpath de forma INCONDICIONAL en cada arranque.
+# Esto elimina la necesidad de --packages, --jars.ivy y cualquier resolucion Ivy en runtime.
+RUN curl -fL -o /opt/spark/jars/spark-connect_2.12-3.5.1.jar \
+    "https://repo1.maven.org/maven2/org/apache/spark/spark-connect_2.12/3.5.1/spark-connect_2.12-3.5.1.jar" && \
+    curl -fL -o /opt/spark/jars/iceberg-spark-runtime-3.5_2.12-1.5.2.jar \
+    "https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-spark-runtime-3.5_2.12/1.5.2/iceberg-spark-runtime-3.5_2.12-1.5.2.jar" && \
+    curl -fL -o /opt/spark/jars/iceberg-aws-bundle-1.5.2.jar \
+    "https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-aws-bundle/1.5.2/iceberg-aws-bundle-1.5.2.jar" && \
+    curl -fL -o /opt/spark/jars/hadoop-aws-3.3.4.jar \
+    "https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar" && \
+    curl -fL -o /opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar \
+    "https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar"
 
-# Hacer que los JARs descargados sean legibles para el usuario spark
-RUN chmod -R 755 /opt/spark/.ivy2
+# Verificar que todos los JARs se descargaron correctamente (falla el build si alguno falta)
+RUN ls -lh /opt/spark/jars/spark-connect_2.12-3.5.1.jar \
+    /opt/spark/jars/iceberg-spark-runtime-3.5_2.12-1.5.2.jar \
+    /opt/spark/jars/iceberg-aws-bundle-1.5.2.jar \
+    /opt/spark/jars/hadoop-aws-3.3.4.jar \
+    /opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar
 
-# Volver al usuario spark por seguridad
+RUN chmod 644 /opt/spark/jars/spark-connect_2.12-3.5.1.jar \
+    /opt/spark/jars/iceberg-spark-runtime-3.5_2.12-1.5.2.jar \
+    /opt/spark/jars/iceberg-aws-bundle-1.5.2.jar \
+    /opt/spark/jars/hadoop-aws-3.3.4.jar \
+    /opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar
+
 USER spark
-
-ENV SPARK_EXTRA_CLASSPATH="/opt/spark/.ivy2/cache/*"

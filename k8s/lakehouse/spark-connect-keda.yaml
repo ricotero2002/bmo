@@ -1,19 +1,89 @@
-apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: spark-connect-scaler
+  name: spark-connect
   namespace: personal-ai
 spec:
-  scaleTargetRef:
-    name: spark-connect
-  minReplicaCount: 0
-  maxReplicaCount: 1
-  # 10 min después del último worker de Airflow -> apagar Spark
-  cooldownPeriod: 600
-  pollingInterval: 10
-  triggers:
-  - type: kubernetes-workload
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spark-connect
+  template:
     metadata:
-      podSelector: "component=worker,tier=airflow"
-      namespace: personal-ai
-      value: "1"
+      labels:
+        app: spark-connect
+    spec:
+      containers:
+      - name: spark-connect
+        image: personal_ai_spark_connect:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 15002
+        - containerPort: 4040
+        envFrom:
+        - secretRef:
+            name: app-secrets
+        securityContext:
+          runAsUser: 0
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            export OCI_ENDPOINT="https://${OCI_NAMESPACE}.compat.objectstorage.${OCI_REGION}.oraclecloud.com"
+            export AWS_REGION="${OCI_REGION}"
+            export AWS_ACCESS_KEY_ID="${OCI_ACCESS_KEY}"
+            export AWS_SECRET_ACCESS_KEY="${OCI_SECRET_KEY}"
+
+            # SIN --packages: los JARs ya estan en /opt/spark/jars/ desde el build.
+            # start-connect-server.sh los detecta automaticamente sin necesitar Ivy.
+            /opt/spark/sbin/start-connect-server.sh \
+              --master "local[*]" \
+              --conf "spark.driver.memory=3g" \
+              --conf "spark.driver.memoryOverhead=512m" \
+              --conf "spark.connect.grpc.binding.port=15002" \
+              --conf "spark.sql.defaultCatalog=lakehouse" \
+              --conf "spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions" \
+              --conf "spark.sql.catalog.lakehouse=org.apache.iceberg.spark.SparkCatalog" \
+              --conf "spark.sql.catalog.lakehouse.type=rest" \
+              --conf "spark.sql.catalog.lakehouse.uri=http://iceberg-rest-svc.personal-ai.svc.cluster.local:8181" \
+              --conf "spark.sql.catalog.lakehouse.io-impl=org.apache.iceberg.aws.s3.S3FileIO" \
+              --conf "spark.sql.catalog.lakehouse.warehouse=s3a://bmo-documents/warehouse/" \
+              --conf "spark.sql.catalog.lakehouse.s3.endpoint=${OCI_ENDPOINT}" \
+              --conf "spark.sql.catalog.lakehouse.s3.path-style-access=true" \
+              --conf "spark.sql.catalog.lakehouse.s3.access-key-id=${OCI_ACCESS_KEY}" \
+              --conf "spark.sql.catalog.lakehouse.s3.secret-access-key=${OCI_SECRET_KEY}" \
+              --conf "spark.sql.catalog.lakehouse.s3.region=${OCI_REGION}" \
+              --conf "spark.sql.catalog.lakehouse.s3.payload-signing-enabled=true" \
+              --conf "spark.sql.catalog.lakehouse.s3.checksum-enabled=false" \
+              --conf "spark.hadoop.fs.s3a.endpoint=${OCI_ENDPOINT}" \
+              --conf "spark.hadoop.fs.s3a.access.key=${OCI_ACCESS_KEY}" \
+              --conf "spark.hadoop.fs.s3a.secret.key=${OCI_SECRET_KEY}" \
+              --conf "spark.hadoop.fs.s3a.path.style.access=true" \
+              --conf "spark.hadoop.fs.s3a.signing-algorithm=AWS4SignerType" \
+              --conf "spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem" \
+              --conf "spark.hadoop.fs.s3a.aws.credentials.provider=org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider"
+
+            # Mantener el contenedor vivo y mostrar logs
+            tail -f /opt/spark/logs/*.out 2>/dev/null || sleep infinity
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "2Gi"
+          limits:
+            cpu: "2"
+            memory: "5Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spark-connect-svc
+  namespace: personal-ai
+spec:
+  selector:
+    app: spark-connect
+  ports:
+  - name: grpc
+    port: 15002
+    targetPort: 15002
+  - name: spark-ui
+    port: 4040
+    targetPort: 4040

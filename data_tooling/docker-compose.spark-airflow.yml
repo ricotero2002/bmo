@@ -82,8 +82,8 @@ services:
   # --- Airflow Common: Configuración base ---
   airflow-common: &airflow-common
     build:
-      context: ./airflow
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: data_tooling/airflow/Dockerfile
     depends_on:
       postgres-airflow:
         condition: service_healthy

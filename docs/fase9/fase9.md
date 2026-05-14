@@ -154,28 +154,7 @@ docker compose -f data_tooling/docker-compose.spark-airflow.yml up -d --build
 
 
 Me falta:
-Probar lo de keda
-    Aplicar los yamls de trino y el de keda de spark connect.
-        # 1. Actualizar Trino
-        helm upgrade trino trino/trino -f k8s/lakehouse/trino-values.yaml -n personal-ai
-
-        # 2. Aplicar los escaladores de KEDA
-        kubectl apply -f k8s/lakehouse/trino-keda.yaml
-        kubectl apply -f k8s/lakehouse/spark-connect-keda.yaml
-
-    Ademas ahora tengo la imagen de spark personalizada tambien:
-
-        docker build -t personal_ai_spark_connect:latest -f docker/spark/Dockerfile.spark-connect .
-
-        # Importar al clúster k3d (ajusta 'bmo' por el nombre de tu clúster si es distinto)
-        k3d image import personal_ai_spark_connect:latest -c bmo
-        kubectl apply -f k8s/lakehouse/02-spark-connect.yaml
-
-
-    Como actualize spark utilities tengo que actualizar el docker image de airflow
-        Docker build e import
-
-
 Conectar con ORACLE, y hacer sus preguntas en metabase.
 Fijarse bien que quiero ver en grafana cloud y hacer bien sus dashboards o queryes, etc. (si quiero ver en tiempo real errores, o estadisticas de kuberenetes o cantidad de llaamadas a diferetnes apies o lo que sea pero ahora si acomodar bien cada cosa que funcione todo)
 Ver lo nuevo que queria agregar al agente.
+Agregar todo lo nuevo (powerbi, trino, metabase, automatizaciones, dag, nose todo lo nuevo a cv)

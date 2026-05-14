@@ -12,7 +12,7 @@ coordinator:
     query:
       maxMemory: "400MB"
       maxMemoryPerNode: "300MB"
-      # La query espera hasta 5 min antes de fallar — da tiempo a KEDA para levantar workers (Fase 2)
+      # La query espera hasta 5 min antes de fallar
       maxQueuedTime: "5m"
   resources:
     requests:
@@ -36,8 +36,7 @@ worker:
     limits:
       cpu: "1000m"
       memory: "768Mi"
-  # Escalado a cero habilitado: KEDA toma el control
-  replicas: 0
+  replicas: 1
   autoscaling:
     enabled: false
 

@@ -83,10 +83,14 @@ si ya estan hay que reimportar:
 docker build --target final-api -t personal_ai_api:latest -f docker/Dockerfile .
 docker build --target final-worker -t personal_ai_worker:latest -f docker/Dockerfile .
 docker build -t personal_ai_airflow:latest -f data_tooling/airflow/Dockerfile .
+docker build -f docker/spark/Dockerfile.spark-connect -t personal_ai_spark_connect:latest .
+
+
 
 k3d image import personal_ai_api:latest -c mycluster
 k3d image import personal_ai_worker:latest -c mycluster
 k3d image import personal_ai_airflow:latest -c mycluster
+k3d image import personal_ai_spark_connect:latest -c mycluster
 
 
 k3d image import personal_ai_api:latest personal_ai_worker:latest -c mycluster
@@ -477,6 +481,9 @@ Arriba a la derecha, haz clic en "Apply".
 kubectl apply -f k8s/kafka-deployment.yaml
 
 kubectl delete scaledobject kafka-consumer-scaler -n personal-ai; kubectl get scaledobject -n personal-ai
+
+kubectl delete statefulset bmo-airflow-worker-0  -n personal-ai
+kubectl delete deployment spark-connect  -n personal-ai
 
 
 kubectl rollout restart deployment kafka-consumer-deployment -n personal-ai

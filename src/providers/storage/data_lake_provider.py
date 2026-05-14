@@ -102,8 +102,10 @@ class DataLakeProvider:
 
         Retorna la ruta s3://bucket/... del objeto creado.
         """
-        bucket = zone or self.default_bucket
-        object_key = f"{table_name}/date={partition_date}/chunk_{chunk_idx}.parquet"
+        # Usamos siempre el bucket principal y la zona como prefijo
+        bucket = self.default_bucket
+        prefix = f"{zone}/" if zone else ""
+        object_key = f"{prefix}{table_name}/date={partition_date}/chunk_{chunk_idx}.parquet"
         s3_uri = f"s3://{bucket}/{object_key}"
 
         logger.info(f"Serializando chunk {chunk_idx} ({len(df)} filas) → {s3_uri}")
@@ -156,8 +158,9 @@ class DataLakeProvider:
         Lee todos los chunks Parquet de una partición y los devuelve como un único DataFrame.
         Útil para tareas de validación o debugging sin Spark.
         """
-        bucket = zone or self.default_bucket
-        prefix = f"{table_name}/date={partition_date}/"
+        bucket = self.default_bucket
+        zone_prefix = f"{zone}/" if zone else ""
+        prefix = f"{zone_prefix}{table_name}/date={partition_date}/"
 
         logger.info(f"Listando objetos en s3://{bucket}/{prefix}")
 
@@ -184,8 +187,9 @@ class DataLakeProvider:
 
     def list_partition_files(self, zone: str, table_name: str, partition_date: str) -> list:
         """Lista las claves S3 de una partición."""
-        bucket = zone or self.default_bucket
-        prefix = f"{table_name}/date={partition_date}/"
+        bucket = self.default_bucket
+        zone_prefix = f"{zone}/" if zone else ""
+        prefix = f"{zone_prefix}{table_name}/date={partition_date}/"
         paginator = self.client.get_paginator("list_objects_v2")
         pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
         keys = [

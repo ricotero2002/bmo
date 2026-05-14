@@ -38,9 +38,10 @@ def download_parquets_from_oci(ds: str, local_dir: str) -> int:
         ),
     )
 
-    prefix = f"langsmith_raw/date={ds}/"
+    bucket = os.getenv("OCI_BUCKET_NAME", "bmo-documents")
+    prefix = f"bronze/langsmith_raw/date={ds}/"
     paginator = s3.get_paginator("list_objects_v2")
-    pages = paginator.paginate(Bucket="bronze", Prefix=prefix)
+    pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
 
     pathlib.Path(local_dir).mkdir(parents=True, exist_ok=True)
     count = 0
@@ -49,8 +50,8 @@ def download_parquets_from_oci(ds: str, local_dir: str) -> int:
             key = obj["Key"]
             filename = os.path.basename(key)
             local_path = os.path.join(local_dir, filename)
-            logger.info(f"Descargando s3://bronze/{key} → {local_path}")
-            s3.download_file("bronze", key, local_path)
+            logger.info(f"Descargando s3://{bucket}/{key} → {local_path}")
+            s3.download_file(bucket, key, local_path)
             count += 1
 
     return count
@@ -61,7 +62,8 @@ def register_bronze(ds: str):
     full_table_name = "lakehouse.bronze.raw_llm_traces"
     local_tmp = f"/tmp/bronze_landing_{ds}"
     remote_url = os.getenv("SPARK_REMOTE")
-    s3_path = f"s3a://bronze/langsmith_raw/date={ds}/"
+    bucket = os.getenv("OCI_BUCKET_NAME", "bmo-documents")
+    s3_path = f"s3a://{bucket}/bronze/langsmith_raw/date={ds}/"
 
     try:
         ensure_lakehouse_namespaces(spark)
@@ -92,16 +94,29 @@ def register_bronze(ds: str):
         """)
 
         if remote_url:
-            logger.info(f"🌐 Spark Connect detectado. Leyendo directamente de OCI: {s3_path}")
-            df_new = spark.read.parquet(s3_path)
-        else:
-            # 2. Descargar Parquets desde OCI via boto3 (Legacy/Local mode)
-            logger.info(f"🏠 Modo Local. Descargando Parquets de OCI para fecha {ds} → {local_tmp}")
+            # Con Spark Connect: boto3 descarga al worker, pandas carga, Spark serializa via gRPC
+            # Evita S3A (hadoop-aws) que tiene incompatibilidades con OCI S3 compat
+            logger.info(f"🌐 Spark Connect: descargando landing zone via boto3 → pandas → Spark")
             n_files = download_parquets_from_oci(ds, local_tmp)
             if n_files == 0:
                 logger.warning(f"⚠️ No hay archivos en la landing zone para {ds}. Saliendo.")
+                spark.stop()
                 return
-            logger.info(f"Descargados {n_files} archivos. Leyendo con Spark desde {local_tmp}")
+
+            # Leer todos los parquets con pandas (en el worker de Airflow)
+            import pandas as pd, glob
+            parquet_files = glob.glob(f"{local_tmp}/*.parquet")
+            pdf = pd.concat([pd.read_parquet(f) for f in parquet_files], ignore_index=True)
+            logger.info(f"Filas leídas via boto3+pandas: {len(pdf)}")
+
+            # Crear DataFrame de Spark desde pandas (viaja via gRPC al servidor)
+            df_new = spark.createDataFrame(pdf)
+        else:
+            # Modo local legacy — igual que antes
+            n_files = download_parquets_from_oci(ds, local_tmp)
+            if n_files == 0:
+                logger.warning(f"⚠️ No hay archivos para {ds}. Saliendo.")
+                return
             df_new = spark.read.parquet(local_tmp)
 
         logger.info(f"Filas leídas: {df_new.count()}")

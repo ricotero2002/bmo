@@ -4,17 +4,33 @@ Un asistente personal de IA basado en la arquitectura **Self-RAG** (Retrieval-Au
 
 ## 🚀 Estado Actual del Proyecto
 
-Actualmente nos encontramos en la **Fase 8 (Madurez de Producto e Inteligencia de Grafos)**, habiendo alcanzado hitos críticos en estabilidad agéntica y optimización de memoria. El sistema ya no es solo un RAG reactivo, sino un **Agente Autónomo con Memoria a Largo Plazo** capaz de resolver tareas complejas y multi-paso con una tasa de éxito verificable del 100%.
+Actualmente nos encontramos finalizando la **Fase 9 (Plataforma de Datos y AI Engineering)**, consolidando el sistema como una plataforma de producción con Lakehouse, ELT automatizado y LLMOps avanzado. El sistema ha evolucionado de un agente reactivo a una infraestructura de datos robusta con trazabilidad total y evaluación automática de calidad.
 
-**Hitos alcanzados recientemente (Fase 8):**
-- **Éxito 100% en Golden Dataset**: Calibración total del pipeline agéntico superando pruebas de precisión y alucinaciones.
-- **Memoria Jerárquica**: Sistema de micro-resúmenes de turno y colapso de memoria global para optimizar tokens en chats largos.
-- **Estabilidad a Escala**: Introducción de **Postgres Connection Pooling** y optimización de semáforos, logrando 0% de errores en tests de estrés con 50+ usuarios.
-- **Arquitectura de LLM en Dos Niveles (Tiering)**: Uso inteligente de modelos *Heavy* y *Lite* para balancear costo, latencia y razonamiento.
-- **Contextual Recall Extendido**: Mecanismo de expansión documental para evitar "puntos ciegos" durante el razonamiento agéntico.
+**Hitos alcanzados recientemente (Fase 9):**
+- **Lakehouse Iceberg + Spark Connect**: Implementación de una arquitectura de datos ACID escalable para telemetría y analítica.
+- **Pipeline ELT con dbt**: Automatización de la arquitectura medallón (Bronze/Silver/Gold) para métricas de negocio y calidad.
+- **LLM-as-a-Judge (DeepEval + NIM)**: Evaluación automática de fidelidad y relevancia con modelos de alta gama en NVIDIA NIM.
+- **Ingesta Masiva Claim-Check**: Sincronización escalable de Notion/Obsidian con Airflow Dynamic Task Mapping y KEDA.
+- **Observabilidad y BI**: Dashboards en Metabase para monitoreo de calidad/costos y Grafana para salud de infraestructura.
 
 > [!TIP]
-> Para el detalle técnico de estas optimizaciones, consulta el [Resumen de Estabilización Agéntica (Fase 8)](docs/fase8/optimizacion_implementacion.md).
+> Para el detalle técnico de estas optimizaciones, consulta el [Resumen Integral de Fase 9](docs/fase_9_completa.md).
+
+---
+
+## 🛠️ Stack Tecnológico
+
+El proyecto utiliza un ecosistema moderno de herramientas de Datos e IA para garantizar escalabilidad y observabilidad:
+
+- **Orquestación**: Apache Airflow 2.10.5 (CeleryExecutor)
+- **Procesamiento de Datos**: Apache Spark 3.5.x (Connect & Thrift) + dbt
+- **Lakehouse**: Apache Iceberg sobre Oracle Object Storage / MinIO
+- **Motores de Consulta**: Trino & Spark SQL
+- **IA & LLMs**: LangGraph, LangChain, DeepEval, NVIDIA NIM (Abacus, Mistral, Llama)
+- **Observabilidad**: LangSmith, Prometheus, OpenTelemetry
+- **Visualización & BI**: Metabase & Grafana
+- **Infraestructura**: Kubernetes (OKE/K3s), Docker Compose, KEDA (Autoscaling)
+- **Bases de Datos**: Aiven PostgreSQL & Oracle Autonomous Database
 
 ---
 
@@ -31,14 +47,11 @@ Actualmente nos encontramos en la **Fase 8 (Madurez de Producto e Inteligencia d
     *   Interfaz moderna básica (Next.js), Streaming UI, sistema de gestión de historiales de chat y migración de checkpointer LangGraph a PostgreSQL.
 *   ✅ **Fase 7: Estabilización, Stress Test y LLMOps** (¡Completada!)
     *   Optimización de parámetros del agente, pruebas anti-alucinaciones, análisis de latencias, costos (LLMs y Cloud), y rendimiento de recursos (Kubernetes local vs remoto).
-*   ⏳ **Fase 8: Madurez de Producto e Inteligencia de Grafos** (En progreso)
-    * Actualmente Finalizado:
-        *   ✅ **Memoria**: Se mejoro la memoria a largo plazo y se realizaron tests con deepeval y locust mas complejos para probar logica y stress.
-    * Falta:
-        *   **Inteligencia**: GraphRAG (Neo4j), LLM Cache y Hybrid Search.
-        *   **Producto**: Sincronización DB Local de Usuarios, RBAC y Gestión de Cuotas.
-        *   **UX**: Feedback Loop (HITL), visualización del plan del agente y despliegue real en Vercel.
-    *   Ver detalle: [Fase 8: Roadmap Estratégico](docs/fase8/fase_8.md).
+*   ✅ **Fase 8: Madurez de Producto e Inteligencia de Grafos** (¡Completada!)
+    * Memoria a largo plazo optimizada, calibración total del pipeline agéntico (100% success) y optimización de concurrencia.
+*   ✅ **Fase 9: Plataforma de Datos y AI Engineering** (¡Completada!)
+    * Implementación de Lakehouse (Iceberg/Spark), automatización de ingesta masiva (Claim-Check), ELT con dbt y LLOps con evaluación automática.
+    * Ver detalle: [Resumen Integral de Fase 9](docs/fase_9_completa.md).
 
 ---
 
