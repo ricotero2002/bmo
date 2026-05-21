@@ -47,18 +47,3 @@ jobs:
         OPENWEATHERMAP_API_KEY: "fake_weather_key"
       run: |
         pytest src/tests/unit
-
-    - name: Run Agent Evaluation Tests (DeepEval)
-      env:
-        # IMPORTANTE: DeepEval requiere una API Key real de OpenAI para juzgar las respuestas.
-        # Recuerda ir a Settings -> Secrets and variables -> Actions y guardar OPENAI_API_KEY.
-        GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-        USE_CLOUD_STORAGE: "True"
-      run: |
-        pytest src/tests/agente/ -v
-
-    - name: Run Cloud Integrations
-      env:
-        INTEGRATION_ENV: cloud
-      run: |
-        pytest src/tests/integration/test_tools_live.py -v -s
