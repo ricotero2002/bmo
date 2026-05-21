@@ -1,0 +1,69 @@
+# ============================================================
+# 05-keda-scalers.yaml — Escaladores KEDA para la app base
+# ============================================================
+# TriggerAuthentication para Redis (usado por el Worker Celery de la APP)
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: keda-redis-auth
+  namespace: personal-ai
+spec:
+  secretTargetRef:
+  - parameter: host
+    name: app-secrets
+    key: REDIS_URL
+
+---
+# TriggerAuthentication para RabbitMQ (usado por el Worker Celery de la APP)
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: keda-rabbitmq-auth
+  namespace: personal-ai
+spec:
+  secretTargetRef:
+  - parameter: host
+    name: app-secrets
+    key: CELERY_BROKER_URL
+
+---
+# ScaledObject: Escala el Worker de la App según la cola de RabbitMQ
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: celery-worker-scaler
+  namespace: personal-ai
+spec:
+  scaleTargetRef:
+    name: worker-deployment
+  minReplicaCount: 0
+  maxReplicaCount: 1
+  triggers:
+  - type: rabbitmq
+    metadata:
+      queueName: ingest_q
+      queueLength: "5"
+    authenticationRef:
+      name: keda-rabbitmq-auth
+
+---
+# HPA basado en CPU para el Deployment de la API
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-hpa
+  namespace: personal-ai
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-deployment
+  minReplicas: 1
+  maxReplicas: 2
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60

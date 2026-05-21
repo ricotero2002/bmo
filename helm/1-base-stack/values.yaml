@@ -1,0 +1,20 @@
+# ============================================================
+# values.yaml — Base Stack
+# ============================================================
+# Valores por defecto para el chart opentelemetry-collector.
+# Los templates propios (API, Worker, etc.) usan sus propios YAMLs.
+
+# Sub-chart alias: otel-collector
+otel-collector:
+  # El values completo del colector se lee desde templates/otel-collector-values.yaml
+  # pero podemos sobrescribir aquí si es necesario
+  mode: deployment
+  image:
+    repository: "otel/opentelemetry-collector-contrib"
+  resources:
+    limits:
+      cpu: "250m"
+      memory: "512Mi"
+    requests:
+      cpu: "100m"
+      memory: "256Mi"

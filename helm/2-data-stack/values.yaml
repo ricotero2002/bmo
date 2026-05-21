@@ -1,0 +1,225 @@
+# ============================================================
+# values.yaml — Data Stack
+# ============================================================
+# Sub-chart alias: airflow
+# Todo el contenido de k8s/airflow/helm-values.yaml se vuelca
+# bajo la clave "airflow:" para que Helm lo pase al sub-chart.
+
+airflow:
+  # ── 1. Imagen personalizada ──
+  images:
+    airflow:
+      repository: personal_ai_airflow
+      tag: latest
+      pullPolicy: Never
+
+  # ── 2. Executor ──
+  executor: "CeleryExecutor"
+
+  # ── 3. Base de Datos Externa (Aiven) ──
+  postgresql:
+    enabled: false
+
+  data:
+    metadataSecretName: airflow-metadata
+    resultBackendSecretName: airflow-metadata
+    brokerUrl: "overridden-by-env"
+
+  # ── 4. Redis / RabbitMQ Externos (Upstash) ──
+  redis:
+    enabled: false
+  rabbitmq:
+    enabled: false
+
+  # ── 5. Variables de entorno ──
+  extraEnvFrom: |-
+    - secretRef:
+        name: 'app-secrets'
+
+  # FUNDAMENTAL: Apagamos la inyección automática del chart para el Broker.
+  enableBuiltInSecretEnvVars:
+    AIRFLOW__CELERY__BROKER_URL: false
+    AIRFLOW__CELERY__RESULT_BACKEND: false
+
+  config:
+    webserver:
+      base_url: "http://localhost:8081/airflow"
+    scheduler:
+      scheduler_zombie_task_threshold: 3600
+      job_heartbeat_sec: 30
+    core:
+      dag_file_processor_timeout: 300
+
+  env:
+    - name: AIRFLOW__CORE__LOAD_EXAMPLES
+      value: "False"
+    - name: AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION
+      value: "True"
+    - name: AIRFLOW__WEBSERVER__SESSION_BACKEND
+      value: "database"
+    - name: AIRFLOW__CORE__HOSTNAME_CALLABLE
+      value: "airflow.utils.net.get_host_ip_address"
+    - name: AIRFLOW__WEBSERVER__BASE_URL
+      value: "http://localhost:8081/airflow"
+    - name: AIRFLOW__WEBSERVER__WEB_SERVER_MASTER_TIMEOUT
+      value: "300"
+    - name: AIRFLOW__CELERY__WORKER_CONCURRENCY
+      value: "2"
+    - name: LAKEHOUSE_REST_URI
+      value: "http://iceberg-rest-svc.personal-ai.svc.cluster.local:8181"
+    - name: LAKEHOUSE_S3_ENDPOINT
+      value: "https://$(OCI_NAMESPACE).compat.objectstorage.$(OCI_REGION).oraclecloud.com"
+    - name: SPARK_REMOTE
+      value: "sc://spark-connect-svc.personal-ai.svc.cluster.local:15002"
+    - name: AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_SIZE
+      value: "10"
+    - name: AIRFLOW__DATABASE__SQL_ALCHEMY_MAX_OVERFLOW
+      value: "5"
+    - name: AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_RECYCLE
+      value: "240"
+    - name: AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_PRE_PING
+      value: "True"
+    - name: AIRFLOW__WEBSERVER__WORKERS
+      value: "2"
+    - name: AIRFLOW__WEBSERVER__WEB_SERVER_WORKER_TIMEOUT
+      value: "60"
+    - name: AIRFLOW__WEBSERVER__PAGE_SIZE
+      value: "25"
+    - name: AIRFLOW__WEBSERVER__RELOAD_ON_PLUGIN_CHANGE
+      value: "False"
+    - name: AIRFLOW__CELERY__BROKER_TRANSPORT_OPTIONS
+      value: '{"visibility_timeout": 3600}'
+    - name: AIRFLOW__CELERY__OPERATION_TIMEOUT
+      value: "10"
+    - name: AIRFLOW__LOGGING__REMOTE_LOGGING
+      value: "False"
+
+  extraEnv: |
+    - name: CELERY_BROKER_URL
+      valueFrom:
+        secretKeyRef:
+          name: app-secrets
+          key: AIRFLOW__CELERY__BROKER_URL
+    - name: CELERY_RESULT_BACKEND
+      valueFrom:
+        secretKeyRef:
+          name: app-secrets
+          key: AIRFLOW__CELERY__RESULT_BACKEND
+    - name: MY_POD_IP
+      valueFrom:
+        fieldRef:
+          fieldPath: status.podIP
+
+  # ── 6. Ingress ──
+  ingress:
+    web:
+      enabled: true
+      ingressClassName: traefik
+      path: /airflow
+      pathType: Prefix
+      hosts:
+        - name: "localhost"
+      annotations:
+        ingress.kubernetes.io/ssl-redirect: "false"
+        traefik.ingress.kubernetes.io/router.entrypoints: web
+        traefik.ingress.kubernetes.io/router.middlewares: personal-ai-airflow-strip-prefix@kubernetescrd
+
+  # ── 7. Webserver & Admin User ──
+  createUserJob:
+    useHelmHooks: false
+    applyCustomEnv: false
+  migrateDatabaseJob:
+    useHelmHooks: false
+    applyCustomEnv: false
+  webserver:
+    defaultUser:
+      enabled: true
+      role: Admin
+      username: admin
+      email: admin@example.com
+      firstName: Admin
+      lastName: Admin
+      password: admin
+    startupProbe:
+      initialDelaySeconds: 60
+      failureThreshold: 30
+      periodSeconds: 10
+      timeoutSeconds: 20
+    livenessProbe:
+      initialDelaySeconds: 60
+      failureThreshold: 10
+      periodSeconds: 10
+      timeoutSeconds: 20
+    readinessProbe:
+      initialDelaySeconds: 60
+      failureThreshold: 10
+      periodSeconds: 10
+      timeoutSeconds: 20
+    resources:
+      limits:
+        cpu: "1000m"
+        memory: "2Gi"
+      requests:
+        cpu: "300m"
+        memory: "768Mi"
+
+  # ── 8. Workers (con KEDA) ──
+  workers:
+    persistence:
+      enabled: true
+      size: 2Gi
+    args:
+      - "bash"
+      - "-c"
+      - "exec airflow celery worker -q default --celery-hostname $MY_POD_IP"
+    replicas: 1
+    keda:
+      enabled: true
+      pollingInterval: 5
+      cooldownPeriod: 30
+      minReplicaCount: 0
+      maxReplicaCount: 1
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "1Gi"
+      limits:
+        cpu: "1500m"
+        memory: "2.5Gi"
+    livenessProbe:
+      initialDelaySeconds: 120
+      timeoutSeconds: 60
+      periodSeconds: 60
+      failureThreshold: 20
+
+  # ── 9. Scheduler ──
+  scheduler:
+    replicas: 1
+    resources:
+      requests:
+        cpu: "750m"
+        memory: "750Mi"
+
+  # ── 10. Persistencia de DAGs y Logs ──
+  dags:
+    persistence:
+      enabled: false
+    gitSync:
+      enabled: false
+  logs:
+    persistence:
+      enabled: false
+
+  # ── 11. Seguridad ──
+  fernetKey: "zTX4Bg8pRVw0gD3L_nX9n4EbHNEFmJNhDYzQqCVzHYo="
+  webserverSecretKey: "bmo-webserver-secret-2026"
+
+  # ── 12. PgBouncer ──
+  pgbouncer:
+    enabled: true
+    maxClientConn: 100
+    metadataPoolSize: 10
+    resultBackendPoolSize: 5
+    configSecretName: airflow-pgbouncer-config
+    metricsExporterSidecar:
+      statsSecretName: airflow-pgbouncer-stats

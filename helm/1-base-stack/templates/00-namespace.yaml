@@ -1,0 +1,7 @@
+# ============================================================
+# 00-namespace.yaml — Namespace base del cluster BMO
+# ============================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: personal-ai

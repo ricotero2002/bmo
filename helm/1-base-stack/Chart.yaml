@@ -1,0 +1,16 @@
+apiVersion: v2
+name: base-stack
+description: |
+  Stack base del cluster BMO. Contiene todo lo que SIEMPRE debe estar corriendo:
+  la API FastAPI, el Worker Celery, Traefik middlewares, Infisical, KEDA scalers
+  y el colector de OpenTelemetry.
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+# Dependencias de Helm charts externos (gestionados via 'helm dependency update')
+dependencies:
+  - name: opentelemetry-collector
+    version: "0.92.0"
+    repository: "https://open-telemetry.github.io/opentelemetry-helm-charts"
+    alias: otel-collector

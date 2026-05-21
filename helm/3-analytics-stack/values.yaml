@@ -1,0 +1,81 @@
+# ============================================================
+# values.yaml — Analytics Stack
+# ============================================================
+# Sub-chart alias: trino
+# Incluye toda la configuración de Trino con el catálogo Iceberg REST.
+# Metabase se despliega como template propio (ver templates/01-metabase.yaml).
+
+trino:
+  image:
+    tag: "451"
+
+  coordinator:
+    jvm:
+      maxHeapSize: "512M"
+    config:
+      query:
+        maxMemory: "400MB"
+        maxMemoryPerNode: "300MB"
+        maxQueuedTime: "5m"
+    resources:
+      requests:
+        cpu: "200m"
+        memory: "512Mi"
+      limits:
+        cpu: "500m"
+        memory: "768Mi"
+
+  worker:
+    jvm:
+      maxHeapSize: "400M"
+    config:
+      query:
+        maxMemory: "400MB"
+        maxMemoryPerNode: "250MB"
+    resources:
+      requests:
+        cpu: "200m"
+        memory: "512Mi"
+      limits:
+        cpu: "1000m"
+        memory: "768Mi"
+    replicas: 1
+    autoscaling:
+      enabled: false
+
+  # Inyectar secretos OCI/S3 para que estén disponibles como variables de entorno
+  env:
+    - name: OCI_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: app-secrets
+          key: OCI_ACCESS_KEY
+    - name: OCI_SECRET_KEY
+      valueFrom:
+        secretKeyRef:
+          name: app-secrets
+          key: OCI_SECRET_KEY
+    - name: OCI_REGION
+      valueFrom:
+        secretKeyRef:
+          name: app-secrets
+          key: OCI_REGION
+    - name: OCI_NAMESPACE
+      valueFrom:
+        secretKeyRef:
+          name: app-secrets
+          key: OCI_NAMESPACE
+
+  # Catalogo Iceberg REST
+  additionalCatalogs:
+    iceberg: |
+      connector.name=iceberg
+      iceberg.catalog.type=rest
+      iceberg.rest-catalog.uri=http://iceberg-rest-svc.personal-ai.svc.cluster.local:8181
+      iceberg.rest-catalog.warehouse=s3://bmo-documents/warehouse/
+      fs.native-s3.enabled=true
+      s3.endpoint=https://${ENV:OCI_NAMESPACE}.compat.objectstorage.${ENV:OCI_REGION}.oraclecloud.com
+      s3.region=${ENV:OCI_REGION}
+      s3.path-style-access=true
+      s3.aws-access-key=${ENV:OCI_ACCESS_KEY}
+      s3.aws-secret-key=${ENV:OCI_SECRET_KEY}

@@ -1,0 +1,17 @@
+apiVersion: v2
+name: data-stack
+description: |
+  Stack de datos del cluster BMO. Contiene Airflow (orquestación),
+  el catálogo REST de Iceberg, Spark Connect y el Job de inicialización
+  de namespaces del Lakehouse.
+  Se activa con: skaffold run -p data  |  o botón "Play" en Tilt
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+# Airflow se gestiona como sub-chart de Helm
+dependencies:
+  - name: airflow
+    version: "1.15.0"
+    repository: "https://airflow.apache.org"
+    alias: airflow

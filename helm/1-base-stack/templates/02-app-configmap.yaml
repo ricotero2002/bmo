@@ -1,0 +1,31 @@
+# ============================================================
+# 02-app-configmap.yaml — ConfigMap con valores no sensibles de la app
+# ============================================================
+# Todos los secretos (DB_HOST, DB_USER, DB_PASSWORD, DB_SERVICE_NAME,
+# PINECONE_API_KEY, OCI_*, REDIS_URL, CELERY_BROKER_URL, etc.)
+# son inyectados por Infisical como "app-secrets".
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: personal-ai
+data:
+  # Entorno
+  APP_ENV: "production"
+  LOG_LEVEL: "info"
+
+  # Oracle ADB — puerto TLS (sin wallet, mTLS debe estar DESACTIVADO en OCI Console)
+  DB_PORT: "1521"
+
+  # Vector Store
+  COLLECTION_NAME: "bmo-documents"
+
+  # LangSmith
+  LANGSMITH_PROJECT: "BMO"
+  LANGCHAIN_TRACING_V2: "true"
+  OLLAMA_BASE_URL: "http://ollama.host.internal:11434"
+
+  # OpenTelemetry
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector-opentelemetry-collector.observability.svc.cluster.local:4318"
+  OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
+  OTEL_RESOURCE_ATTRIBUTES: "service.namespace=personal-ai,deployment.environment=production"

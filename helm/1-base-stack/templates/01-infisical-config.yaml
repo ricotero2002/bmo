@@ -1,0 +1,35 @@
+# ============================================================
+# 01-infisical-config.yaml — Sincronización de secretos con Infisical
+# ============================================================
+# Infisical actúa como fuente de verdad para todos los secretos.
+# Este operador sincroniza los secretos desde Infisical a Kubernetes.
+apiVersion: secrets.infisical.com/v1alpha1
+kind: InfisicalSecret
+metadata:
+  name: app-secrets-sync
+  namespace: personal-ai
+spec:
+  hostAPI: https://app.infisical.com/api
+  syncConfig:
+    resyncInterval: 60s
+
+  authentication:
+    universalAuth:
+      secretsScope:
+        projectSlug: "bmo-ai-assistant-qd7o"
+        envSlug: "prod"
+        secretsPath: "/"
+      credentialsRef:
+        secretName: infisical-auth-secret
+        secretNamespace: personal-ai
+
+  managedKubeSecretReferences:
+    - secretName: app-secrets
+      secretNamespace: personal-ai
+      creationPolicy: "Orphan"
+    - secretName: app-secrets
+      secretNamespace: observability
+      creationPolicy: "Orphan"
+    - secretName: airflow-pgbouncer-config
+      secretNamespace: personal-ai
+      creationPolicy: "Orphan"

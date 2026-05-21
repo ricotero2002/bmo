@@ -1,0 +1,116 @@
+# ============================================================
+# skaffold.yaml — Orquestador de Build + Deploy para el cluster BMO
+# ============================================================
+# Versión: skaffold/v4beta11
+#
+# USO RÁPIDO:
+#   skaffold run               → Solo levanta la base (API + Worker)
+#   skaffold run -p data       → Levanta Airflow + Spark + Iceberg
+#   skaffold run -p analytics  → Levanta Trino + Metabase
+#   skaffold dev               → Modo watch con hot-reload de la API
+#   skaffold delete            → Baja todo el base stack
+#   skaffold delete -p data    → Baja el data stack limpiamente
+#
+apiVersion: skaffold/v4beta11
+kind: Config
+metadata:
+  name: bmo-cluster
+
+# ============================================================
+# SECCIÓN GLOBAL DE CONSTRUCCIÓN (BUILD)
+# ============================================================
+# Skaffold es inteligente: solo compilará las imágenes que
+# sean requeridas por el perfil que estés ejecutando.
+# Si corrés -p data, ignora la API y el Worker.
+build:
+  artifacts:
+    # 1. Imagen de la API FastAPI (Multi-stage: target final-api)
+    - image: personal_ai_api
+      context: .
+      docker:
+        dockerfile: docker/Dockerfile
+        target: final-api
+
+    # 2. Imagen del Worker Celery (mismo Dockerfile, distinto target)
+    - image: personal_ai_worker
+      context: .
+      docker:
+        dockerfile: docker/Dockerfile
+        target: final-worker
+
+    # 3. Imagen de Airflow con DAGs y dependencias personalizadas
+    - image: personal_ai_airflow
+      context: .
+      docker:
+        dockerfile: data_tooling/airflow/Dockerfile
+
+    # 4. Imagen de Spark Connect con JARs pre-empaquetados
+    - image: personal_ai_spark_connect
+      context: .
+      docker:
+        dockerfile: docker/spark/Dockerfile.spark-connect
+
+  # Le decimos a Skaffold que usamos k3d localmente.
+  # Carga las imágenes directo al cluster sin subirlas a ningún registry.
+  local:
+    push: false
+    # Nombre del cluster k3d donde se cargan las imágenes
+    useDockerCLI: false
+
+
+# ============================================================
+# BASE STACK — Se ejecuta por defecto con `skaffold run`
+# ============================================================
+# Incluye: API FastAPI, Worker Celery, Infisical, KEDA, OTEL Collector
+deploy:
+  helm:
+    releases:
+      - name: base-stack
+        chartPath: ./helm/1-base-stack
+        namespace: personal-ai
+        createNamespace: true
+        # Skaffold inyecta automáticamente los tags compilados
+        # buscando las referencias a "personal_ai_api" y "personal_ai_worker"
+        # en los YAMLs del chart.
+        setValueTemplates:
+          # Inyección de tags de imagen (Skaffold los gestiona automáticamente)
+          # Las imágenes en los templates usan imagePullPolicy: Never con k3d
+          {}
+
+# ============================================================
+# PERFILES DE DESPLIEGUE (DEPLOY PROFILES)
+# ============================================================
+profiles:
+
+  # ──────────────────────────────────────────────────────────
+  # PERFIL: data
+  # Levanta: Airflow (CeleryExecutor+KEDA) + Iceberg REST + Spark Connect
+  # Uso: skaffold run -p data
+  # Bajar: skaffold delete -p data
+  # ──────────────────────────────────────────────────────────
+  - name: data
+    deploy:
+      helm:
+        releases:
+          - name: data-stack
+            chartPath: ./helm/2-data-stack
+            namespace: personal-ai
+            createNamespace: true
+            # Sobrescribe el tag de la imagen de Airflow con el compilado por Skaffold
+            setValueTemplates:
+              airflow.images.airflow.tag: "{{.IMAGE_TAG_personal_ai_airflow}}"
+
+  # ──────────────────────────────────────────────────────────
+  # PERFIL: analytics
+  # Levanta: Trino (consultas sobre Lakehouse) + Metabase (BI dashboards)
+  # Uso: skaffold run -p analytics
+  # Bajar: skaffold delete -p analytics
+  # ──────────────────────────────────────────────────────────
+  - name: analytics
+    deploy:
+      helm:
+        releases:
+          - name: analytics-stack
+            chartPath: ./helm/3-analytics-stack
+            namespace: personal-ai
+            createNamespace: true

@@ -1,0 +1,69 @@
+# ============================================================
+# 03-init-iceberg-namespaces.yaml — Job de inicialización del Lakehouse
+# ============================================================
+# Crea los namespaces bronze/silver/gold en el catálogo Iceberg
+# la primera vez que se levanta el data-stack.
+# ttlSecondsAfterFinished asegura que el Job se limpie automáticamente.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: init-iceberg-namespaces
+  namespace: personal-ai
+  labels:
+    app: iceberg-init
+spec:
+  # Se autolimpia 5 minutos después de completarse exitosamente
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        app: iceberg-init
+    spec:
+      restartPolicy: OnFailure
+      # Espera a que el REST catalog esté listo antes de correr
+      initContainers:
+        - name: wait-for-iceberg
+          image: busybox
+          command:
+            - sh
+            - -c
+            - |
+              until wget -qO- http://iceberg-rest-svc.personal-ai.svc.cluster.local:8181/v1/namespaces > /dev/null 2>&1; do
+                echo "Esperando iceberg-rest-svc..."
+                sleep 3
+              done
+              echo "iceberg-rest-svc listo."
+      containers:
+        - name: init-namespaces
+          image: curlimages/curl:8.5.0
+          command:
+            - sh
+            - -c
+            - |
+              BASE="http://iceberg-rest-svc.personal-ai.svc.cluster.local:8181/v1"
+              
+              create_ns() {
+                NS=$1
+                echo "→ Creando namespace: $NS"
+                RESULT=$(curl -s -o /dev/null -w "%{http_code}" \
+                  -X POST "${BASE}/namespaces" \
+                  -H "Content-Type: application/json" \
+                  -d "{\"namespace\": [\"${NS}\"]}")
+                if [ "$RESULT" = "200" ] || [ "$RESULT" = "409" ]; then
+                  echo "  ✅ $NS OK (HTTP $RESULT)"
+                else
+                  echo "  ❌ $NS FALLÓ (HTTP $RESULT)"
+                  exit 1
+                fi
+              }
+              
+              create_ns "default"
+              create_ns "bronze"
+              create_ns "silver"
+              create_ns "gold"
+              
+              echo ""
+              echo "✅ Namespaces inicializados correctamente."
+              echo "Namespaces existentes:"
+              curl -s "${BASE}/namespaces" | tr ',' '\n'

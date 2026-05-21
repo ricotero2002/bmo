@@ -1,0 +1,14 @@
+# ============================================================
+# 03-traefik-middlewares.yaml — Middlewares de Traefik para routing
+# ============================================================
+# Strip-prefix para Airflow (definido en base porque el Ingress de Airflow
+# referencia este middleware y Traefik debe conocerlo antes de que llegue el data-stack)
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: airflow-strip-prefix
+  namespace: personal-ai
+spec:
+  stripPrefix:
+    prefixes:
+      - /airflow
